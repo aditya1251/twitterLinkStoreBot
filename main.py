@@ -14,13 +14,16 @@ if not TOKEN or not WEBHOOK_URL:
     raise EnvironmentError("Missing TELEGRAM_BOT_TOKEN or WEBHOOK_URL")
 
 bot = telebot.TeleBot(TOKEN)
+telebot.apihelper.ENABLE_MIDDLEWARE = True
 app = Flask(__name__)
 webhook_set = False
 
 # /start command
 @bot.message_handler(commands=['start'])
 def handle_start(message):
-    bot.send_message(message.chat.id, "👋 Hello! I'm your Telegram bot running on Render with webhooks.")
+    print("✅ /start command received from", message.chat.id)
+    bot.send_message(message.chat.id, "👋 Hello from webhook bot!")
+
 
 # Optional: /help
 @bot.message_handler(commands=['help'])
@@ -39,6 +42,11 @@ def webhook():
         return '', 200
     else:
         return 'Invalid content type', 403
+    
+@bot.message_handler(func=lambda message: True)
+def catch_all(message):
+    print("⚠️ No specific handler matched this message:", message.text)
+
 
 # Root route: sets webhook if not yet set
 @app.route("/", methods=['GET'])
@@ -54,3 +62,4 @@ def index():
             return "✅ Webhook set successfully"
         return f"❌ Failed to set webhook: {res.text}", 500
     return "✅ Webhook already set"
+
