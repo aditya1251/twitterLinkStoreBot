@@ -33,6 +33,8 @@ def webhook():
     if request.headers.get('content-type') == 'application/json':
         json_string = request.get_data().decode('utf-8')
         update = telebot.types.Update.de_json(json_string)
+        print(bot.get_me())
+        print(f"Received update: {update}")
         bot.process_new_updates([update])
         return '', 200
     else:
