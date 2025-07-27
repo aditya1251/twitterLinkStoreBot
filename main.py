@@ -3,44 +3,36 @@ from flask import Flask, request
 import telebot
 import requests
 from dotenv import load_dotenv
+from handlers.commands import handle_command
+from utils.db import init_db
 
-# Load environment variables
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Example: https://your-app.onrender.com/webhook
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+MONGODB_URI = os.getenv("MONGODB_URI")
 
-if not TOKEN or not WEBHOOK_URL:
-    raise EnvironmentError("Missing TELEGRAM_BOT_TOKEN or WEBHOOK_URL")
+if not TOKEN or not WEBHOOK_URL or not MONGODB_URI:
+    raise EnvironmentError("Missing required environment variables.")
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
+db = init_db(MONGODB_URI)
 webhook_set = False
 
+# Manual dispatcher
 def handle_update(update):
-    if update.message:
-        text = update.message.text
-        chat_id = update.message.chat.id
-        if text == '/start':
-            print(f"🔔 Received /start from {chat_id}")
-            bot.send_message(chat_id, "👋 Hello! I'm your bot running on Render with manual handlers.")
-        elif text == '/help':
-            bot.send_message(chat_id, "ℹ️ Available commands:\n/start - Welcome message\n/help - Command list")
-        else:
-            bot.send_message(chat_id, "❓ Unknown command. Try /start or /help.")
+    if update.message and update.message.text:
+        handle_command(bot, update.message, db)
 
-# Webhook endpoint
 @app.route("/webhook", methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        print(f"📩 Received update: {update}")
+        update = telebot.types.Update.de_json(request.get_data().decode("utf-8"))
         handle_update(update)
         return '', 200
     return 'Invalid content type', 403
 
-# Root route: auto-sets webhook
 @app.route("/", methods=['GET'])
 def index():
     global webhook_set
