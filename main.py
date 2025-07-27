@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Example: https://your-service.onrender.com/webhook
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Example: https://your-app.onrender.com/webhook
 
 if not TOKEN or not WEBHOOK_URL:
     raise EnvironmentError("Missing TELEGRAM_BOT_TOKEN or WEBHOOK_URL")
@@ -17,27 +17,30 @@ bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 webhook_set = False
 
-# /start command
-@bot.message_handler(commands=['start'])
-def handle_start(message):
-    print(f"✅ /start received from {message.chat.id}")
-    bot.send_message(message.chat.id, "👋 Hello! I'm your bot running on Render with webhooks.")
+def handle_update(update):
+    if update.message:
+        text = update.message.text
+        chat_id = update.message.chat.id
+        if text == '/start':
+            print(f"🔔 Received /start from {chat_id}")
+            bot.send_message(chat_id, "👋 Hello! I'm your bot running on Render with manual handlers.")
+        elif text == '/help':
+            bot.send_message(chat_id, "ℹ️ Available commands:\n/start - Welcome message\n/help - Command list")
+        else:
+            bot.send_message(chat_id, "❓ Unknown command. Try /start or /help.")
 
-# Telegram webhook endpoint
+# Webhook endpoint
 @app.route("/webhook", methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
         json_string = request.get_data().decode('utf-8')
         update = telebot.types.Update.de_json(json_string)
         print(f"📩 Received update: {update}")
-        try:
-            bot.process_new_updates([update])
-        except Exception as e:
-            print(f"❌ Error processing update: {e}")
+        handle_update(update)
         return '', 200
     return 'Invalid content type', 403
 
-# Root route to auto-set webhook
+# Root route: auto-sets webhook
 @app.route("/", methods=['GET'])
 def index():
     global webhook_set
