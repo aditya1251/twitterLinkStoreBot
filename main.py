@@ -10,14 +10,13 @@ load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-MONGODB_URI = os.getenv("MONGODB_URI")
 
-if not TOKEN or not WEBHOOK_URL or not MONGODB_URI:
+if not TOKEN or not WEBHOOK_URL:
     raise EnvironmentError("Missing required environment variables.")
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
-db = init_db(MONGODB_URI)
+db = init_db()  
 webhook_set = False
 
 # Manual dispatcher

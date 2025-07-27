@@ -1,6 +1,15 @@
 from pymongo import MongoClient
+import os
 
-def init_db(uri):
-    client = MongoClient(uri)
-    db = client.get_database()  # Uses DB from the URI
-    return db
+_client = None
+_db = None
+
+def init_db():
+    global _client, _db
+    if not _client:
+        uri = os.getenv("MONGODB_URI")
+        if not uri:
+            raise Exception("MONGODB_URI is missing.")
+        _client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+        _db = _client.get_database()
+    return _db
