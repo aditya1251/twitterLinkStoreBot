@@ -10,7 +10,8 @@ from utils.group_session import (
     handle_srlist_command,
     set_verification_phase,
     get_all_links_count,
-    handle_close_group
+    handle_close_group,
+    getallusers
 )
 
 
@@ -112,6 +113,27 @@ def handle_group_command(bot, message, db):
             return
 
         response = "<b>📊 Users with Multiple Links:</b>\n\n"
+        for user in users:
+            name_display = f"@{user['username']}" if user.get("username") else f"ID: <code>{user['user_id']}</code>"
+            response += f"👤 <b>{name_display}</b> — {user['count']} links\n"
+            for idx, link in enumerate(user["links"], start=1):
+                response += f"{idx}. {link}\n"
+            response += "\n"
+
+        bot.send_message(chat_id, response, parse_mode="HTML")
+
+    elif text == "/list":
+        if not is_user_admin(bot, chat_id, user_id):
+            bot.send_message(chat_id, "❌ Only admins can use this command.")
+            return
+
+        users = getallusers(chat_id)
+
+        if not users or len(users) == 0:
+            bot.send_message(chat_id, "ℹ️ No users.")
+            return
+
+        response = "<b>📊 Users:</b>\n\n"
         for user in users:
             name_display = f"@{user['username']}" if user.get("username") else f"ID: <code>{user['user_id']}</code>"
             response += f"👤 <b>{name_display}</b> — {user['count']} links\n"

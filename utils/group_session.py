@@ -122,6 +122,10 @@ def get_users_with_multiple_links(group_id):
             })
     return result
 
+def getallusers(group_id):
+    gid = normalize_gid(group_id)
+    return group_messages.get(gid, [])
+
 def get_unverified_users(group_id):
     gid = normalize_gid(group_id)
     seen = set()
