@@ -3,13 +3,17 @@ from flask import Flask, request
 import telebot
 import requests
 from dotenv import load_dotenv
-from handlers.commands import handle_command
+from handlers.commands import handle_command, handle_group_command
+from handlers.text import handle_text, handle_group_text
 from utils.db import init_db
+from utils.group_manager import get_allowed_groups , save_group_metadata
+from handlers.callbacks import handle_callback
 
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+ADMIN_IDS = list(map(int, os.getenv("ADMIN_IDS", "").split(',')))
 
 if not TOKEN or not WEBHOOK_URL:
     raise EnvironmentError("Missing required environment variables.")
@@ -21,8 +25,37 @@ webhook_set = False
 
 # Manual dispatcher
 def handle_update(update):
-    if update.message and update.message.text:
-        handle_command(bot, update.message, db)
+
+    if update.callback_query:
+        handle_callback(bot, update.callback_query)
+        
+
+    if not update.message:
+        return
+
+    message = update.message
+    chat = message.chat
+    if not message.text:
+        return
+    # Allow all private chats (admin management)
+    if chat.type == "private":
+        if message.text and message.text.startswith("/"):
+            handle_command(bot, message, db)
+        else:
+            handle_text(bot, message, db)
+        return
+
+    # Allow only allowed groups
+    if chat.type in ["group", "supergroup"]:
+        save_group_metadata(db, message.chat)
+        if not chat.id in get_allowed_groups():
+            return  # Ignore message from unapproved group
+
+        if message.text and message.text.startswith("/"):
+            handle_group_command(bot, message, db)
+        else:
+            handle_group_text(bot, message, db)
+
 
 @app.route("/webhook", methods=['POST'])
 def webhook():
@@ -45,3 +78,6 @@ def index():
             return "✅ Webhook set successfully"
         return f"❌ Failed to set webhook: {res.text}", 500
     return "✅ Webhook already set"
+
+if __name__ == "__main__":
+    app.run()
