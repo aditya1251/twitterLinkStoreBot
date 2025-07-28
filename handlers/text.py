@@ -56,7 +56,8 @@ def handle_group_text(bot, message, db):
         done_keywords = ["done", "all done", "ad", "all dn"]
         if message.text.lower().strip() in done_keywords:
             if x_username := mark_user_verified(group_id, user.id):
-                bot.reply_to(message, f"𝕏 ID @{x_username}")
+                msg = bot.reply_to(message, f"𝕏 ID @{x_username}")
+                track_message(chat.id, msg.message_id)  # ✅
             else:
                 msg = bot.send_message(chat.id, "𝕏 already verified")
                 track_message(chat.id, msg.message_id)  # ✅
