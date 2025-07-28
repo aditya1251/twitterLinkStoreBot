@@ -1,5 +1,6 @@
 # message_tracker.py
-
+import time
+from telebot.apihelper import ApiTelegramException
 from collections import defaultdict
 
 # In-memory message ID store: { "chat_id": [msg_id1, msg_id2, ...] }
@@ -25,15 +26,28 @@ def clear_tracked_messages(chat_id: int):
 
 def delete_tracked_messages(bot, chat_id: int):
     """
-    Delete all messages tracked for a given chat using the bot.
+    Delete all tracked messages for a given chat, respecting Telegram's rate limits.
     """
     chat_key = str(chat_id)
-    for msg_id in messages_by_chat.get(chat_key, []):
+    tracked = messages_by_chat.get(chat_key, [])
+    
+    for msg_id in tracked:
         try:
             bot.delete_message(chat_id, msg_id)
-        except Exception:
-            pass  # You can log the error here if needed
+            time.sleep(0.05)  # Limit to 20 messages per second
+        except ApiTelegramException as e:
+            if e.error_code == 429:
+                retry_after = getattr(e, 'retry_after', 3)
+                print(f"Rate limit hit. Sleeping for {retry_after} seconds...")
+                time.sleep(retry_after)
+            else:
+                print(f"Failed to delete message {msg_id}: {e}")
+        except Exception as e:
+            print(f"Unexpected error deleting message {msg_id}: {e}")
+    
+    # Clear the tracked messages
     messages_by_chat[chat_key] = []
+
 
 def delete_last_message(bot, chat_id: int):
     """

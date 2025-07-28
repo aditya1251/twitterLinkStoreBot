@@ -6,7 +6,7 @@ from utils.message_tracker import track_message  # ✅ Import the tracker
 def handle_manage_groups(bot, message, db):
     if message.chat.type != "private" or message.from_user.id not in ADMIN_IDS:
         msg = bot.send_message(message.chat.id, "❌ Only admins can manage groups via private chat.")
-        track_message(message.chat.id, msg.message.id)  # ✅ Track the message
+        track_message(message.chat.id, msg.message_id)  # ✅ Track the message
         return
 
     markup = InlineKeyboardMarkup()
@@ -45,4 +45,4 @@ def handle_manage_groups(bot, message, db):
         disable_web_page_preview=True,
         reply_markup=markup
     )
-    track_message(message.chat.id, msg.message.id)  # ✅ Track the main response
+    track_message(message.chat.id, msg.message_id)  # ✅ Track the main response

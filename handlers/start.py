@@ -12,15 +12,15 @@ def handle_start_group(bot, message: Message):
         already_started = get_group_phase(chat_id)
         if already_started:
             msg = bot.send_message(chat_id, "Group already started!")
-            track_message(chat_id, msg.message.id)  # ✅
+            track_message(chat_id, msg.message_id)  # ✅
             return
         start_group_session(chat_id)
         bot.send_video(chat_id, open("gifs/start.mp4", "rb"))
         msg = bot.send_message(chat_id, "🚀 Start dropping your links!")
-        track_message(chat_id, msg.message.id)  # ✅
+        track_message(chat_id, msg.message_id)  # ✅
     else:
         msg = bot.send_message(chat_id, "❌ Only group admins can start session.")
-        track_message(chat_id, msg.message.id)  # ✅
+        track_message(chat_id, msg.message_id)  # ✅
 
 
 def handle_cancel_group(bot, message: Message, db):
@@ -34,12 +34,12 @@ def handle_cancel_group(bot, message: Message, db):
             upsert=True
         )
         msg = bot.send_video(chat_id, open("gifs/close.mp4", "rb"))
-        track_message(chat_id, msg.message.id)
+        track_message(chat_id, msg.message_id)
         msg = bot.send_message(chat_id, "Tracking has been stopped. All data cleared.")
-        track_message(chat_id, msg.message.id)  # ✅
+        track_message(chat_id, msg.message_id)  # ✅
     else:
         msg = bot.send_message(chat_id, "❌ Only group admins can stop session.")
-        track_message(chat_id, msg.message.id)  # ✅
+        track_message(chat_id, msg.message_id)  # ✅
 
 
 def handle_start(bot, message):
@@ -55,4 +55,4 @@ def handle_start(bot, message):
     )
 
     msg = bot.send_message(chat_id, welcome_text, parse_mode="Markdown")
-    track_message(chat_id, msg.message.id)  # ✅
+    track_message(chat_id, msg.message_id)  # ✅
