@@ -158,7 +158,7 @@ def get_formatted_user_link_list(group_id):
     for i, (uid, data) in enumerate(grouped.items(), start=1):
         name = f'<a href="tg://user?id={uid}">{data["first_name"]}</a>'
         x_username = data["x_username"]
-        block = f"{i}. {name} ✦ (<a href=\"https://x.com/{x_username}\">{x_username}</a>)"
+        block = f"{i}. {name} ✦ (𝕏 ID <a href=\"https://x.com/{x_username}\">{x_username}</a>)"
         result.append(block)
 
     return "\n".join(result), len(result)
@@ -307,9 +307,8 @@ def handle_srlist_command(bot, message: Message):
         if entry["user_id"] in sr_users:
             first_name = entry.get("first_name", "User")
             uid = entry["user_id"]
-            x_username = entry["x_username"]
             mentions.append(
-                f"{i}. <a href=\"tg://user?id={uid}\">{first_name}</a> ✦ (<a href=\"https://x.com/{x_username}\">{x_username}</a>)"
+                f"{i}. <a href=\"tg://user?id={uid}\">{first_name}</a>)"
             )
 
     if not mentions:

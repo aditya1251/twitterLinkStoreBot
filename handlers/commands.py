@@ -149,7 +149,7 @@ def handle_group_command(bot, message, db):
             msg = bot.send_message(chat_id, "ℹ️ No users have submitted X links yet.")
             track_message(chat_id, msg.message_id)  # ✅
         else:
-            msg = bot.send_message(chat_id, f"<b>📄 🚨 USERS LIST 🚨: {count}</b>\n\n{result}", parse_mode="HTML")
+            msg = bot.send_message(chat_id, f"<b>🚨 USERS LIST 🚨: {count}</b>\n\n{result}", parse_mode="HTML")
             track_message(chat_id, msg.message_id)  # ✅
 
     elif text == "/unsafe":
@@ -166,10 +166,10 @@ def handle_group_command(bot, message, db):
             return
 
         if not users:
-            msg = bot.send_message(chat_id, "✅ All users are verified.")
+            msg = bot.send_message(chat_id, "✅ All users are safe.")
             track_message(chat_id, msg.message_id)  # ✅
         else:
-            msg_text = "<b>⚠️ Unverified Users:</b>\n"
+            msg_text = "<b>⚠️ Unsafe Users:</b>\n"
             for user in users:
                 msg_text += f"\n• {user}"  # Already formatted HTML
             msg = bot.send_message(chat_id, msg_text, parse_mode="HTML")
@@ -225,4 +225,4 @@ def handle_group_command(bot, message, db):
     elif text == "/srlist":
         handle_srlist_command(bot, message)
     elif text == "/clear":
-        delete_tracked_messages(bot, message.chat_id)
+        delete_tracked_messages(bot, message.chat.id)
