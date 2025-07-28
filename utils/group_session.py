@@ -1,6 +1,6 @@
 from threading import Lock
 from config import ADMIN_IDS
-from telegram import Message
+from telebot.types import Message
 
 active_groups = {}          # group_id (str) -> phase
 group_messages = {}         # group_id (str) -> list of messages
