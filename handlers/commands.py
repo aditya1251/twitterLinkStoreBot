@@ -67,6 +67,9 @@ def handle_group_command(bot, message, db):
     if text == "/start":
         print(f"Group command: /start by {user_id}")
         start.handle_start_group(bot, message)
+    elif text == "/close":
+        print(f"Group command: /close by {user_id}")
+        start.handle_cancel_group(bot, message,db)
     elif text == "/refresh_admins":
         if is_user_admin(bot, chat_id, message.from_user.id):
             try:

@@ -2,7 +2,7 @@ from telebot.types import Message
 from utils.telegram import is_user_admin
 from utils.group_session import start_group_session, stop_group_session
 
-def handle_start_group(bot, message: Message, db):
+def handle_start_group(bot, message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     print(f"Group start: {user_id}")
