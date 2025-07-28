@@ -8,7 +8,7 @@ from handlers.text import handle_text, handle_group_text
 from utils.db import init_db
 from utils.group_manager import get_allowed_groups , save_group_metadata
 from handlers.callbacks import handle_callback
-from utils.message_tracker import track_message_id
+from utils.message_tracker import track_message
 
 
 load_dotenv()
@@ -39,7 +39,7 @@ def handle_update(update):
     chat_id = message.chat.id
 
 
-    track_message_id(message.chat.id, message.message_id)
+    track_message(message.chat.id, message.message_id)
 
     chat = message.chat
     if not message.text:
