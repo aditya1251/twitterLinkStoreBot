@@ -123,25 +123,19 @@ def handle_group_command(bot, message, db):
         bot.send_message(chat_id, response, parse_mode="HTML")
 
     elif text == "/list":
+        from utils.group_session import get_formatted_user_link_list
+
         if not is_user_admin(bot, chat_id, user_id):
             bot.send_message(chat_id, "❌ Only admins can use this command.")
             return
 
-        users = getallusers(chat_id)
+        result = get_formatted_user_link_list(chat_id)
 
-        if not users or len(users) == 0:
-            bot.send_message(chat_id, "ℹ️ No users.")
-            return
+        if not result:
+            bot.send_message(chat_id, "ℹ️ No users have submitted X links yet.")
+        else:
+            bot.send_message(chat_id, f"<b>📄 Submitted Users:</b>\n\n{result}", parse_mode="HTML")
 
-        response = "<b>📊 Users:</b>\n\n"
-        for user in users:
-            name_display = f"@{user['username']}" if user.get("username") else f"ID: <code>{user['user_id']}</code>"
-            response += f"👤 <b>{name_display}</b> — {user['count']} links\n"
-            for idx, link in enumerate(user["links"], start=1):
-                response += f"{idx}. {link}\n"
-            response += "\n"
-
-        bot.send_message(chat_id, response, parse_mode="HTML")
 
     elif text == "/unsafe":
         if not is_user_admin(bot, chat_id, user_id):
@@ -157,7 +151,12 @@ def handle_group_command(bot, message, db):
         if not users:
             bot.send_message(chat_id, "✅ All users are verified.")
         else:
-            msg = "<b>⚠️ Unverified Users:</b>\n" + "\n".join([f"• {u}" for u in users])
+            msg = "<b>⚠️ Unverified Users:</b>\n"
+            for user in users:
+                uid = user["user_id"]
+                fname = user.get("first_name", "User")
+                mention = f'<a href="tg://user?id={uid}">{fname}</a>'
+                msg += f"\n• {mention} (ID: <code>{uid}</code>)"
             bot.send_message(chat_id, msg, parse_mode="HTML")
 
     elif text == "/muteunsafe":

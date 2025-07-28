@@ -122,9 +122,30 @@ def get_users_with_multiple_links(group_id):
             })
     return result
 
-def getallusers(group_id):
+def get_formatted_user_link_list(group_id):
     gid = normalize_gid(group_id)
-    return group_messages.get(gid, [])
+    from collections import defaultdict
+
+    grouped = defaultdict(lambda: {"x_username": None, "first_name": None, "links": []})
+    
+    for msg in group_messages.get(gid, []):
+        uid = msg["user_id"]
+        grouped[uid]["x_username"] = msg["x_username"]
+        grouped[uid]["first_name"] = msg.get("first_name", "User")
+        grouped[uid]["links"].append(msg["link"])
+
+    if not grouped:
+        return None
+
+    result = []
+    for i, (uid, data) in enumerate(grouped.items(), start=1):
+        name = f'<a href="tg://user?id={uid}">{data["first_name"]}</a>'
+        x_username = data["x_username"]
+        links = "\n".join(data["links"])
+        block = f"{i}. {name} ✦ (@{x_username})\n{links}"
+        result.append(block)
+
+    return "\n\n".join(result)
 
 def get_unverified_users(group_id):
     gid = normalize_gid(group_id)
