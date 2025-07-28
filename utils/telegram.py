@@ -8,26 +8,31 @@ import telebot.types
 _admins_cache = {}
 _lock = Lock()
 
+def normalize_gid(chat_id):
+    return str(chat_id)
+
 def get_cached_admins(chat_id):
+    gid = normalize_gid(chat_id)
     with _lock:
-        return _admins_cache.get(chat_id)
+        return _admins_cache.get(gid)
 
 def set_cached_admins(chat_id, admin_ids):
+    gid = normalize_gid(chat_id)
     with _lock:
-        _admins_cache[chat_id] = admin_ids
+        _admins_cache[gid] = admin_ids
 
 def clear_cached_admins(chat_id):
+    gid = normalize_gid(chat_id)
     with _lock:
-        _admins_cache.pop(chat_id, None)
+        _admins_cache.pop(gid, None)
 
 def is_user_admin_cached(chat_id, user_id):
+    gid = normalize_gid(chat_id)
     with _lock:
-        admins = _admins_cache.get(chat_id)
+        admins = _admins_cache.get(gid)
         if admins is None:
-            return None  # means not cached yet
+            return None  # Not cached yet
         return user_id in admins
-
-
 
 def is_user_admin(bot, chat_id, user_id):
     cached_result = is_user_admin_cached(chat_id, user_id)
@@ -42,7 +47,6 @@ def is_user_admin(bot, chat_id, user_id):
     except Exception as e:
         print(f"[AdminCheckError] {e}")
         return False
-    
 
 def mute_user(bot, chat_id, user_id, duration_days=3):
     until_date = datetime.utcnow() + timedelta(days=duration_days)
@@ -62,6 +66,5 @@ def mute_user(bot, chat_id, user_id, duration_days=3):
         )
         return True
     except apihelper.ApiTelegramException as e:
-        print(f"Failed to mute {user_id} in {chat_id}: {e}")
+        print(f"[MuteError] Failed to mute {user_id} in {chat_id}: {e}")
         return False
-
