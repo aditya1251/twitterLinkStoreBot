@@ -11,7 +11,6 @@ from utils.group_session import (
     set_verification_phase,
     get_all_links_count,
     handle_close_group,
-    getallusers
 )
 
 
