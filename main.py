@@ -49,14 +49,13 @@ def handle_update(update):
     if chat.type in ["group", "supergroup"]:
         save_group_metadata(db, message.chat)
         if not chat.id in get_allowed_groups():
-            print(f"[GroupIgnored] {chat.id}")
             return  # Ignore message from unapproved group
 
         if message.text and message.text.startswith("/"):
-            print(f"[Group Command] {chat.id}")
             handle_group_command(bot, message, db)
         else:
             handle_group_text(bot, message, db)
+
 
 @app.route("/webhook", methods=['POST'])
 def webhook():
