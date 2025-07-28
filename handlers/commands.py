@@ -26,24 +26,28 @@ def handle_command(bot, message, db):
         start.handle_start(bot, message)
     elif text == "/help":
         help_text = (
-        "🤖 *Bot Help Menu*\n\n"
-        "👤 *General Commands:*\n"
-        "/start — Start the bot\n"
-        "/help — Show this help menu\n\n"
-        "👥 *Group Commands:*\n"
-        "/start — Activate group features\n"
-        "/refresh_admins — Refresh admin list (admin only)\n"
-        "/verify — Start verifying mode (admin only)\n"
-        "/multi — Show users with multiple links (admin only)\n"
-        "/unsafe — List unverified users (admin only)\n"
-        "/muteunsafe — Mute all unverified users for 3 days (admin only)\n"
-        "/link — [Reply] Get all links shared by a user (admin only)\n"
-        "/sr — [Reply] Ask a user to submit screen recording in DM (admin only)\n"
-        "/srlist — List users asked to submit screen recordings (admin only)\n\n"
-        "🛠️ *Admin Panel:*\n"
-        "/managegroups — Manage allowed groups (admin only in private chat)\n"
-    )
-        bot.send_message(chat_id, help_text, parse_mode="Markdown")
+    "🤖 <b>Bot Help Menu</b>\n\n"
+    "👤 <b>General Commands:</b><br>"
+    "/start — Start the bot<br>"
+    "/help — Show this help menu<br><br>"
+
+    "👥 <b>Group Commands:</b><br>"
+    "/start — Activate group features<br>"
+    "/refresh_admins — Refresh admin list (admin only)<br>"
+    "/verify — Start verifying mode (admin only)<br>"
+    "/multi — Show users with multiple links (admin only)<br>"
+    "/unsafe — List unverified users (admin only)<br>"
+    "/muteunsafe — Mute all unverified users for 3 days (admin only)<br>"
+    "/link — [Reply] Get all links shared by a user (admin only)<br>"
+    "/sr — [Reply] Ask a user to submit screen recording in DM (admin only)<br>"
+    "/srlist — List users asked to submit screen recordings (admin only)<br><br>"
+
+    "🛠️ <b>Admin Panel:</b><br>"
+    "/managegroups — Manage allowed groups (admin only in private chat)"
+)
+
+        bot.send_message(chat_id, help_text, parse_mode="HTML")
+
 
     elif text == "/managegroups":
         admin.handle_manage_groups(bot, message, db)

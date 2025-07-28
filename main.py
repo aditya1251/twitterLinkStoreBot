@@ -78,6 +78,3 @@ def index():
             return "✅ Webhook set successfully"
         return f"❌ Failed to set webhook: {res.text}", 500
     return "✅ Webhook already set"
-
-if __name__ == "__main__":
-    app.run()
