@@ -15,7 +15,8 @@ def handle_start_group(bot, message: Message):
             track_message(chat_id, msg.message_id)  # ✅
             return
         start_group_session(chat_id)
-        bot.send_video(chat_id, open("gifs/start.mp4", "rb"))
+        msg = bot.send_video(chat_id, open("gifs/start.mp4", "rb"))
+        track_message(chat_id, msg.message_id)
         msg = bot.send_message(chat_id, "🚀 Start dropping your links!")
         track_message(chat_id, msg.message_id)  # ✅
     else:
