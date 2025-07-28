@@ -61,8 +61,11 @@ def handle_group_command(bot, message, db):
 
     if "@" in text:
         text = text.split("@")[0]
+
+    print(f"Group command: {text} by {user_id}")
     
     if text == "/start":
+        print(f"Group command: /start by {user_id}")
         start.handle_start_group(bot, message)
     elif text == "/refresh_admins":
         if is_user_admin(bot, chat_id, message.from_user.id):

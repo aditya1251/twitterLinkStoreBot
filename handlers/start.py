@@ -5,8 +5,10 @@ from utils.group_session import start_group_session, stop_group_session
 def handle_start_group(bot, message: Message, db):
     chat_id = message.chat.id
     user_id = message.from_user.id
+    print(f"Group start: {user_id}")
     if is_user_admin(bot, chat_id, user_id):
         start_group_session(chat_id)
+        print(f"Group started: {chat_id}")
         bot.send_message(
                     chat_id,
                     "👋 Hello! I'm your group management bot\n\n"
