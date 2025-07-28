@@ -13,7 +13,7 @@ def handle_start_group(bot, message: Message):
             return
         start_group_session(chat_id)
         bot.send_video(chat_id, open("gifs/start.mp4", "rb"))
-        bot.send_message(chat_id,"Start sharing your post links!")
+        bot.send_message(chat_id,"🚀 Start dropping your links!")
     else:
         bot.send_message(chat_id, "❌ Only group admins can start session.")
 
