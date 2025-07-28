@@ -13,6 +13,8 @@ from utils.group_session import (
     handle_close_group,
     handle_add_to_ad_command
 )
+from utils.message_tracker import track_message ,delete_tracked_messages
+
 
 
 def handle_command(bot, message, db):
@@ -53,12 +55,14 @@ def handle_command(bot, message, db):
             "🛠️ <b>Admin Panel:</b>\n"
             "/managegroups — Manage allowed groups (admin only in private chat)"
         )
-        bot.send_message(chat_id, help_text, parse_mode="HTML")
+        msg = bot.send_message(chat_id, help_text, parse_mode="HTML")
+        track_message(chat_id, msg.message_id)  # ✅
 
     elif text == "/managegroups":
         admin.handle_manage_groups(bot, message, db)
     else:
-        bot.send_message(chat_id, "🤔 Unknown command. Use /help.")
+        msg = bot.send_message(chat_id, "🤔 Unknown command. Use /help.")
+        track_message(chat_id, msg.message_id)  # ✅
 
 
 def handle_group_command(bot, message, db):
@@ -71,7 +75,7 @@ def handle_group_command(bot, message, db):
 
     if text in ["/start", "/starts"]:
         start.handle_start_group(bot, message)
-    
+
     elif text == "/close":
         handle_close_group(bot, message)
 
@@ -83,33 +87,41 @@ def handle_group_command(bot, message, db):
             try:
                 admins = bot.get_chat_administrators(chat_id)
                 set_cached_admins(chat_id, [admin.user.id for admin in admins])
-                bot.send_message(chat_id, "✅ Admin list refreshed.")
+                msg = bot.send_message(chat_id, "✅ Admin list refreshed.")
+                track_message(chat_id, msg.message_id)  # ✅
             except Exception:
-                bot.send_message(chat_id, "⚠️ Failed to refresh admins.")
+                msg = bot.send_message(chat_id, "⚠️ Failed to refresh admins.")
+                track_message(chat_id, msg.message_id)  # ✅
 
     elif text in ["/verify", "/track", "/check"]:
         if is_user_admin(bot, chat_id, user_id):
             set_verification_phase(chat_id)
-            bot.send_message(chat_id, "✅ Ad tracking has started! I will track 'ad', 'all done', 'all dn', 'done' messages.")
+            msg = bot.send_message(chat_id, "✅ Ad tracking has started! I will track 'ad', 'all done', 'all dn', 'done' messages.")
+            track_message(chat_id, msg.message_id)  # ✅
         else:
-            bot.send_message(chat_id, "❌ Only admins can enable verification.")
+            msg = bot.send_message(chat_id, "❌ Only admins can enable verification.")
+            track_message(chat_id, msg.message_id)  # ✅
 
     elif text == "/count":
         if not is_user_admin(bot, chat_id, user_id):
-            bot.send_message(chat_id, "❌ Only admins can use this command.")
+            msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
+            track_message(chat_id, msg.message_id)  # ✅
             return
         count = get_all_links_count(chat_id)
-        bot.send_message(chat_id, f"📊 Total Users: {count}")
+        msg = bot.send_message(chat_id, f"📊 Total Users: {count}")
+        track_message(chat_id, msg.message_id)  # ✅
 
     elif text == "/multi":
         if not is_user_admin(bot, chat_id, user_id):
-            bot.send_message(chat_id, "❌ Only admins can use this command.")
+            msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
+            track_message(chat_id, msg.message_id)  # ✅
             return
 
         users = get_users_with_multiple_links(chat_id)
 
         if not users:
-            bot.send_message(chat_id, "ℹ️ No users with multiple links.")
+            msg = bot.send_message(chat_id, "ℹ️ No users with multiple links.")
+            track_message(chat_id, msg.message_id)  # ✅
             return
 
         response = "<b>📊 Users with Multiple Links:</b>\n\n"
@@ -120,54 +132,65 @@ def handle_group_command(bot, message, db):
                 response += f"{idx}. {link}\n"
             response += "\n"
 
-        bot.send_message(chat_id, response, parse_mode="HTML")
+        msg = bot.send_message(chat_id, response, parse_mode="HTML")
+        track_message(chat_id, msg.message_id)  # ✅
 
     elif text == "/list":
         from utils.group_session import get_formatted_user_link_list
 
         if not is_user_admin(bot, chat_id, user_id):
-            bot.send_message(chat_id, "❌ Only admins can use this command.")
+            msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
+            track_message(chat_id, msg.message_id)  # ✅
             return
 
         result, count = get_formatted_user_link_list(chat_id)
 
         if not result:
-            bot.send_message(chat_id, "ℹ️ No users have submitted X links yet.")
+            msg = bot.send_message(chat_id, "ℹ️ No users have submitted X links yet.")
+            track_message(chat_id, msg.message_id)  # ✅
         else:
-            bot.send_message(chat_id, f"<b>📄 🚨 USERS LIST 🚨: {count}</b>\n\n{result}", parse_mode="HTML")
+            msg = bot.send_message(chat_id, f"<b>📄 🚨 USERS LIST 🚨: {count}</b>\n\n{result}", parse_mode="HTML")
+            track_message(chat_id, msg.message_id)  # ✅
 
     elif text == "/unsafe":
         if not is_user_admin(bot, chat_id, user_id):
-            bot.send_message(chat_id, "❌ Only admins can use this command.")
+            msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
+            track_message(chat_id, msg.message_id)  # ✅
             return
 
         users = get_unverified_users(chat_id)
 
         if users == "notVerifyingphase":
-            bot.send_message(chat_id, "⚠️ This session is not in the verifying phase.")
+            msg = bot.send_message(chat_id, "⚠️ This session is not in the verifying phase.")
+            track_message(chat_id, msg.message_id)  # ✅
             return
 
         if not users:
-            bot.send_message(chat_id, "✅ All users are verified.")
+            msg = bot.send_message(chat_id, "✅ All users are verified.")
+            track_message(chat_id, msg.message_id)  # ✅
         else:
-            msg = "<b>⚠️ Unverified Users:</b>\n"
+            msg_text = "<b>⚠️ Unverified Users:</b>\n"
             for user in users:
-                msg += f"\n• {user}"  # user is already an HTML-formatted mention
-            bot.send_message(chat_id, msg, parse_mode="HTML")
+                msg_text += f"\n• {user}"  # Already formatted HTML
+            msg = bot.send_message(chat_id, msg_text, parse_mode="HTML")
+            track_message(chat_id, msg.message_id)  # ✅
 
-    elif text == "/muteunsafe":
+    elif text in ["/muteunsafe","/muteall"]:
         if not is_user_admin(bot, chat_id, user_id):
-            bot.send_message(chat_id, "❌ Only admins can use this command.")
+            msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
+            track_message(chat_id, msg.message_id)  # ✅
             return
 
         unverified = get_unverified_users_full(chat_id)
 
         if unverified == "notVerifyingphase":
-            bot.send_message(chat_id, "⚠️ This session is not in the verifying phase.")
+            msg = bot.send_message(chat_id, "⚠️ This session is not in the verifying phase.")
+            track_message(chat_id, msg.message_id)  # ✅
             return
 
         if not unverified:
-            bot.send_message(chat_id, "✅ No unverified users to mute.")
+            msg = bot.send_message(chat_id, "✅ No unverified users to mute.")
+            track_message(chat_id, msg.message_id)  # ✅
             return
 
         success_log = []
@@ -181,17 +204,18 @@ def handle_group_command(bot, message, db):
             else:
                 failed.append(fname)
 
-        msg = "<b>🔇 Muted the following unverified users for 3 days:</b>\n\n"
-        msg += "\n".join(success_log)
+        msg_text = "<b>🔇 Muted the following unverified users for 3 days:</b>\n\n"
+        msg_text += "\n".join(success_log)
 
         if failed:
-            msg += "\n\n⚠️ <b>Failed to mute:</b>\n" + "\n".join(f"• {u}" for u in failed)
+            msg_text += "\n\n⚠️ <b>Failed to mute:</b>\n" + "\n".join(f"• {u}" for u in failed)
 
-        bot.send_message(chat_id, msg, parse_mode="HTML")
+        msg = bot.send_message(chat_id, msg_text, parse_mode="HTML")
+        track_message(chat_id, msg.message_id)  # ✅
 
     elif text.startswith("/link"):
         handle_link_command(bot, message)
-    
+
     elif text == "/add_to_ad":
         handle_add_to_ad_command(bot, message)
 
@@ -200,3 +224,5 @@ def handle_group_command(bot, message, db):
 
     elif text == "/srlist":
         handle_srlist_command(bot, message)
+    elif text == "/clear":
+        delete_tracked_messages(bot, message.chat_id)

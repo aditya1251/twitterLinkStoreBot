@@ -1,10 +1,11 @@
 from threading import Lock
 from config import ADMIN_IDS
 from telebot.types import Message
+from utils.message_tracker import track_message  # ✅ Import the tracker
 
-active_groups = {}          # group_id (str) -> phase
-group_messages = {}         # group_id (str) -> list of messages
-sr_requested_users = {}     # group_id (str) -> set of user_ids
+active_groups = {}
+group_messages = {}
+sr_requested_users = {}
 lock = Lock()
 
 
@@ -88,7 +89,8 @@ def handle_close_group(bot, message):
     gid = normalize_gid(message.chat.id)
     with lock:
         active_groups[gid] = "closed"
-    bot.send_video(message.chat.id, open("gifs/stop.mp4", "rb"))
+    msg = bot.send_video(message.chat.id, open("gifs/stop.mp4", "rb"))
+    track_message(message.chat.id, msg.message_id)
 
 
 def mark_user_verified(group_id, user_id):
@@ -139,8 +141,7 @@ def get_formatted_user_link_list(group_id):
     gid = normalize_gid(group_id)
     from collections import defaultdict
 
-    grouped = defaultdict(
-        lambda: {"x_username": None, "first_name": None, "links": []})
+    grouped = defaultdict(lambda: {"x_username": None, "first_name": None, "links": []})
 
     for msg in group_messages.get(gid, []):
         uid = msg["user_id"]
@@ -174,8 +175,7 @@ def get_unverified_users(group_id):
         user_id = msg["user_id"]
         if not msg["check"] and user_id not in seen:
             seen.add(user_id)
-            unverified_users.append(
-                f'<a href="tg://user?id={user_id}">{msg.get("first_name", "User")}</a>')
+            unverified_users.append(f'<a href="tg://user?id={user_id}">{msg.get("first_name", "User")}</a>')
 
     return unverified_users
 
@@ -211,8 +211,8 @@ def handle_add_to_ad_command(bot, message):
 
     reply_to_message = message.reply_to_message
     if not reply_to_message:
-        bot.reply_to(
-            message, "↩️ Please reply to the user's message to get their links.")
+        msg = bot.reply_to(message, "↩️ Please reply to the user's message to get their links.")
+        track_message(chat_id, msg.message_id)
         return
 
     user_id = reply_to_message.from_user.id
@@ -222,7 +222,8 @@ def handle_add_to_ad_command(bot, message):
         if entry["user_id"] == user_id:
             entry["check"] = True
 
-    bot.reply_to(message, f"{display_name} have been marked as AD.")
+    msg = bot.reply_to(message, f"{display_name} have been marked as AD.", parse_mode="HTML")
+    track_message(chat_id, msg.message_id)
 
 
 def handle_link_command(bot, message: Message):
@@ -230,32 +231,33 @@ def handle_link_command(bot, message: Message):
     from_id = message.from_user.id
 
     if from_id not in ADMIN_IDS:
-        bot.reply_to(message, "❌ Only admins can use this command.")
+        msg = bot.reply_to(message, "❌ Only admins can use this command.")
+        track_message(chat_id, msg.message_id)
         return
 
     if not message.reply_to_message:
-        bot.reply_to(
-            message, "↩️ Please reply to the user's message to get their links.")
+        msg = bot.reply_to(message, "↩️ Please reply to the user's message to get their links.")
+        track_message(chat_id, msg.message_id)
         return
 
     target_user = message.reply_to_message.from_user
     user_id = target_user.id
     display_name = f'<a href="tg://user?id={user_id}">{target_user.first_name}</a>'
 
-    links = [entry["link"] for entry in group_messages.get(
-        chat_id, []) if entry["user_id"] == user_id]
+    links = [entry["link"] for entry in group_messages.get(chat_id, []) if entry["user_id"] == user_id]
 
     if not links:
-        bot.reply_to(
-            message, f"❌ No links found for {display_name}.", parse_mode="HTML")
+        msg = bot.reply_to(message, f"❌ No links found for {display_name}.", parse_mode="HTML")
+        track_message(chat_id, msg.message_id)
         return
 
     link_lines = "\n".join([f"{i+1}. {l}" for i, l in enumerate(links)])
-    bot.reply_to(
+    msg = bot.reply_to(
         message,
         f"<b>🔗 Links shared by {display_name}:</b>\n{link_lines}",
         parse_mode="HTML"
     )
+    track_message(chat_id, msg.message_id)
 
 
 def handle_sr_command(bot, message: Message):
@@ -263,54 +265,57 @@ def handle_sr_command(bot, message: Message):
     from_id = message.from_user.id
 
     if from_id not in ADMIN_IDS:
-        bot.reply_to(message, "❌ Only admins can use this command.")
+        msg = bot.reply_to(message, "❌ Only admins can use this command.")
+        track_message(chat_id, msg.message_id)
         return
 
     if not message.reply_to_message:
-        bot.reply_to(
-            message, "↩️ Reply to a user you want to request screen recording from.")
+        msg = bot.reply_to(message, "↩️ Reply to a user you want to request screen recording from.")
+        track_message(chat_id, msg.message_id)
         return
 
     user = message.reply_to_message.from_user
     request_sr(chat_id, user.id)
 
     mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
-    bot.send_message(
+    msg = bot.send_message(
         chat_id,
         f"📹 {mention}, Please recheck your likes are missing and send a screen recording 'DM' Make sure your profile is visible too!",
         parse_mode="HTML"
     )
+    track_message(chat_id, msg.message_id)
 
 
 def handle_srlist_command(bot, message: Message):
     chat_id = normalize_gid(message.chat.id)
 
     if message.from_user.id not in ADMIN_IDS:
-        bot.reply_to(message, "❌ Only admins can use this command.")
+        msg = bot.reply_to(message, "❌ Only admins can use this command.")
+        track_message(chat_id, msg.message_id)
         return
 
     sr_users = get_sr_users(chat_id)
     if not sr_users:
-        bot.reply_to(message, "✅ No users asked for screen recording.")
+        msg = bot.reply_to(message, "✅ No users asked for screen recording.")
+        track_message(chat_id, msg.message_id)
         return
 
     mentions = []
-    for entry in get_group_messages(chat_id):
+    for i, entry in enumerate(get_group_messages(chat_id), start=1):
         if entry["user_id"] in sr_users:
             first_name = entry.get("first_name", "User")
             uid = entry["user_id"]
+            x_username = entry["x_username"]
             mentions.append(
-                f"• <a href=\"tg://user?id={uid}\">{first_name}</a> (ID: <code>{uid}</code>)")
+                f"{i}. <a href=\"tg://user?id={uid}\">{first_name}</a> ✦ (<a href=\"https://x.com/{x_username}\">{x_username}</a>)"
+            )
 
     if not mentions:
-        mentions = [f"• User ID: <code>{uid}</code>" for uid in sr_users]
+        mentions = [f"{i}. User ID: <code>{uid}</code>" for i, uid in enumerate(sr_users, start=1)]
 
-    bot.send_message(
-        chat_id,
-        "<b>📋 Users asked to submit screen recording:</b>\n" +
-        "\n".join(mentions),
-        parse_mode="HTML"
-    )
+    message_text = "<b>📋 Users asked to submit screen recording:</b>\n" + "\n".join(mentions)
+    msg = bot.send_message(chat_id, message_text, parse_mode="HTML")
+    track_message(chat_id, msg.message_id)
 
 
 def handle_done_keywords(bot, message: Message, group_id):
@@ -320,14 +325,11 @@ def handle_done_keywords(bot, message: Message, group_id):
         x_username, status = mark_user_verified(group_id, user.id)
         mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
         if status == "verified":
-            bot.reply_to(
-                message, f"{mention}'s X account: {x_username}.", parse_mode="HTML")
+            msg = bot.reply_to(message, f"{mention}'s X account: {x_username}.", parse_mode="HTML")
         elif status == "already_verified":
-            bot.send_message(
-                message.chat.id, f"⚠️ {mention} is already verified.", parse_mode="HTML")
+            msg = bot.send_message(message.chat.id, f"⚠️ {mention} is already verified.", parse_mode="HTML")
         elif status == "no_messages":
-            bot.send_message(
-                message.chat.id, f"⚠️ {mention} hasn't sent any links.", parse_mode="HTML")
+            msg = bot.send_message(message.chat.id, f"⚠️ {mention} hasn't sent any links.", parse_mode="HTML")
         else:
-            bot.send_message(
-                message.chat.id, f"⚠️ Unknown error or group not found.", parse_mode="HTML")
+            msg = bot.send_message(message.chat.id, f"⚠️ Unknown error or group not found.", parse_mode="HTML")
+        track_message(message.chat.id, msg.message_id)

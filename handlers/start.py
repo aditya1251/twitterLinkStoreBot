@@ -1,6 +1,8 @@
 from telebot.types import Message
 from utils.telegram import is_user_admin
 from utils.group_session import start_group_session, stop_group_session, get_group_phase
+from utils.message_tracker import track_message  # ✅ Import tracker
+
 
 def handle_start_group(bot, message: Message):
     chat_id = message.chat.id
@@ -9,29 +11,35 @@ def handle_start_group(bot, message: Message):
 
         already_started = get_group_phase(chat_id)
         if already_started:
-            bot.send_message(chat_id,"Group already started!")
+            msg = bot.send_message(chat_id, "Group already started!")
+            track_message(chat_id, msg.message_id)  # ✅
             return
         start_group_session(chat_id)
         bot.send_video(chat_id, open("gifs/start.mp4", "rb"))
-        bot.send_message(chat_id,"🚀 Start dropping your links!")
+        msg = bot.send_message(chat_id, "🚀 Start dropping your links!")
+        track_message(chat_id, msg.message_id)  # ✅
     else:
-        bot.send_message(chat_id, "❌ Only group admins can start session.")
+        msg = bot.send_message(chat_id, "❌ Only group admins can start session.")
+        track_message(chat_id, msg.message_id)  # ✅
+
 
 def handle_cancel_group(bot, message: Message, db):
     chat_id = message.chat.id
     user_id = message.from_user.id
     if is_user_admin(bot, chat_id, user_id):
         data = stop_group_session(chat_id)
-        # upload to database
         db["LinksData"].update_one(
             {"chat_id": chat_id},
             {"$push": {"data": data}},
             upsert=True
         )
         bot.send_video(chat_id, open("gifs/close.mp4", "rb"))
-        bot.send_message(chat_id, "Tracking has been stopped. All data cleared.")
+        msg = bot.send_message(chat_id, "Tracking has been stopped. All data cleared.")
+        track_message(chat_id, msg.message_id)  # ✅
     else:
-        bot.send_message(chat_id, "�� Only group admins can stop session.")
+        msg = bot.send_message(chat_id, "❌ Only group admins can stop session.")
+        track_message(chat_id, msg.message_id)  # ✅
+
 
 def handle_start(bot, message):
     chat_id = message.chat.id
@@ -45,4 +53,5 @@ def handle_start(bot, message):
         "Type /help to see what I can do!"
     )
 
-    bot.send_message(chat_id, welcome_text, parse_mode="Markdown")
+    msg = bot.send_message(chat_id, welcome_text, parse_mode="Markdown")
+    track_message(chat_id, msg.message_id)  # ✅
