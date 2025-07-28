@@ -114,7 +114,7 @@ def mark_user_verified(group_id, user_id):
         elif not x_usernames:
             return None, "already_verified"
         else:
-            return list(x_usernames)[0], "verified"
+            return list(x_usernames)[0]
 
 
 def get_users_with_multiple_links(group_id):
