@@ -73,6 +73,13 @@ def store_group_message(group_id, user_id, username, link, x_username=None, firs
             "check": False,
         })
 
+
+def handle_close_group(bot, message):
+    gid = normalize_gid(message.chat.id)
+    with lock:
+        active_groups[gid] = "closed"
+    bot.send_video(message.chat.id, open("gifs/stop.mp4", "rb"))
+
 def mark_user_verified(group_id, user_id):
     gid = normalize_gid(group_id)
     x_usernames = set()

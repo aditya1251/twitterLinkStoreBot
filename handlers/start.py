@@ -32,6 +32,7 @@ def handle_cancel_group(bot, message: Message, db):
         bot.send_message(chat_id, "Tracking has been stopped. All data cleared.")
     else:
         bot.send_message(chat_id, "�� Only group admins can stop session.")
+
 def handle_start(bot, message):
     chat_id = message.chat.id
 

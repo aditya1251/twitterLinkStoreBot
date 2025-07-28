@@ -10,6 +10,7 @@ from utils.group_session import (
     handle_srlist_command,
     set_verification_phase,
     get_all_links_count,
+    handle_close_group
 )
 
 
@@ -69,8 +70,11 @@ def handle_group_command(bot, message, db):
 
     if text in ["/start", "/starts"]:
         start.handle_start_group(bot, message)
+    
+    elif text == "/close":
+        handle_close_group(bot, message)
 
-    elif text in ["/close", "/end", "/stop"]:
+    elif text in ["/end", "/stop"]:
         start.handle_cancel_group(bot, message, db)
 
     elif text == "/refresh_admins":
