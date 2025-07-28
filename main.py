@@ -39,7 +39,7 @@ def handle_update(update):
     chat_id = message.chat.id
 
 
-    track_message(message.chat.id, message.message_id)
+    track_message(message.chat.id, message.message.id)
 
     chat = message.chat
     if not message.text:

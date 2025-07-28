@@ -16,8 +16,8 @@ def handle_callback(bot, call: CallbackQuery):
     if call.data == "add_group":
         pending_action[user_id] = "add"
         msg = bot.send_message(chat_id, "📥 Send the group ID to *add*.", parse_mode="Markdown")
-        track_message(chat_id, msg.message_id)  # ✅ Track
+        track_message(chat_id, msg.message.id)  # ✅ Track
     elif call.data == "remove_group":
         pending_action[user_id] = "remove"
         msg = bot.send_message(chat_id, "📤 Send the group ID to *remove*.", parse_mode="Markdown")
-        track_message(chat_id, msg.message_id)  # ✅ Track
+        track_message(chat_id, msg.message.id)  # ✅ Track

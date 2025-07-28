@@ -78,6 +78,7 @@ def store_group_message(group_id, user_id, username, link, x_username=None, firs
         x_username = link.split("/")[3]
 
         group_messages[gid].append({
+            "number": len(group_messages[gid]) + 1,
             "user_id": user_id,
             "username": username,
             "first_name": first_name,
@@ -92,7 +93,7 @@ def handle_close_group(bot, message):
     with lock:
         active_groups[gid] = "closed"
     msg = bot.send_video(message.chat.id, open("gifs/stop.mp4", "rb"))
-    track_message(message.chat.id, msg.message_id)
+    track_message(message.chat.id, msg.message.id)
 
 
 def mark_user_verified(group_id, user_id):
@@ -175,16 +176,18 @@ def get_unverified_users(group_id):
 
     for msg in group_messages.get(gid, []):
         user_id = msg["user_id"]
+        number = msg["number"]
         if not msg["check"] and user_id not in seen:
             seen.add(user_id)
-            unverified_users.append(f'<a href="tg://user?id={user_id}">{msg.get("first_name", "User")}</a>')
+            unverified_users.append(f'{number}. <a href="tg://user?id={user_id}">{msg.get("first_name", "User")}</a>')
 
     return unverified_users
 
 
 def get_all_links_count(group_id):
     gid = normalize_gid(group_id)
-    return len(group_messages.get(gid, []))
+    unique_users = set(msg["user_id"] for msg in group_messages.get(gid, []))
+    return len(unique_users)
 
 
 def get_unverified_users_full(group_id):
@@ -214,7 +217,7 @@ def handle_add_to_ad_command(bot, message):
     reply_to_message = message.reply_to_message
     if not reply_to_message:
         msg = bot.reply_to(message, "↩️ Please reply to the user's message to get their links.")
-        track_message(chat_id, msg.message_id)
+        track_message(chat_id, msg.message.id)
         return
 
     user_id = reply_to_message.from_user.id
@@ -225,7 +228,7 @@ def handle_add_to_ad_command(bot, message):
             entry["check"] = True
 
     msg = bot.reply_to(message, f"{display_name} have been marked as AD.", parse_mode="HTML")
-    track_message(chat_id, msg.message_id)
+    track_message(chat_id, msg.message.id)
 
 
 def handle_link_command(bot, message: Message):
@@ -234,12 +237,12 @@ def handle_link_command(bot, message: Message):
 
     if from_id not in ADMIN_IDS:
         msg = bot.reply_to(message, "❌ Only admins can use this command.")
-        track_message(chat_id, msg.message_id)
+        track_message(chat_id, msg.message.id)
         return
 
     if not message.reply_to_message:
         msg = bot.reply_to(message, "↩️ Please reply to the user's message to get their links.")
-        track_message(chat_id, msg.message_id)
+        track_message(chat_id, msg.message.id)
         return
 
     target_user = message.reply_to_message.from_user
@@ -250,7 +253,7 @@ def handle_link_command(bot, message: Message):
 
     if not links:
         msg = bot.reply_to(message, f"❌ No links found for {display_name}.", parse_mode="HTML")
-        track_message(chat_id, msg.message_id)
+        track_message(chat_id, msg.message.id)
         return
 
     link_lines = "\n".join([f"{i+1}. {l}" for i, l in enumerate(links)])
@@ -259,7 +262,7 @@ def handle_link_command(bot, message: Message):
         f"<b>🔗 Links shared by {display_name}:</b>\n{link_lines}",
         parse_mode="HTML"
     )
-    track_message(chat_id, msg.message_id)
+    track_message(chat_id, msg.message.id)
 
 
 def handle_sr_command(bot, message: Message):
@@ -268,12 +271,12 @@ def handle_sr_command(bot, message: Message):
 
     if from_id not in ADMIN_IDS:
         msg = bot.reply_to(message, "❌ Only admins can use this command.")
-        track_message(chat_id, msg.message_id)
+        track_message(chat_id, msg.message.id)
         return
 
     if not message.reply_to_message:
         msg = bot.reply_to(message, "↩️ Reply to a user you want to request screen recording from.")
-        track_message(chat_id, msg.message_id)
+        track_message(chat_id, msg.message.id)
         return
 
     user = message.reply_to_message.from_user
@@ -285,7 +288,7 @@ def handle_sr_command(bot, message: Message):
         f"📹 {mention}, Please recheck your likes are missing and send a screen recording 'DM' Make sure your profile is visible too!",
         parse_mode="HTML"
     )
-    track_message(chat_id, msg.message_id)
+    track_message(chat_id, msg.message.id)
 
 
 def handle_srlist_command(bot, message: Message):
@@ -293,30 +296,30 @@ def handle_srlist_command(bot, message: Message):
 
     if message.from_user.id not in ADMIN_IDS:
         msg = bot.reply_to(message, "❌ Only admins can use this command.")
-        track_message(chat_id, msg.message_id)
+        track_message(chat_id, msg.message.id)
         return
 
     sr_users = get_sr_users(chat_id)
     if not sr_users:
         msg = bot.reply_to(message, "✅ No users asked for screen recording.")
-        track_message(chat_id, msg.message_id)
+        track_message(chat_id, msg.message.id)
         return
 
     mentions = []
-    for i, entry in enumerate(get_group_messages(chat_id), start=1):
-        if entry["user_id"] in sr_users:
+    seen_users = set()
+    for entry in get_group_messages(chat_id):
+        if entry["user_id"] in sr_users and entry["user_id"] not in seen_users:
             first_name = entry.get("first_name", "User")
             uid = entry["user_id"]
-            mentions.append(
-                f"{i}. <a href=\"tg://user?id={uid}\">{first_name}</a>)"
-            )
+            mentions.append(f"<a href=\"tg://user?id={uid}\">{first_name}</a>")
+            seen_users.add(uid)
 
     if not mentions:
-        mentions = [f"{i}. User ID: <code>{uid}</code>" for i, uid in enumerate(sr_users, start=1)]
+        mentions = [f"User ID: <code>{uid}</code>" for uid in sr_users]
 
-    message_text = "<b>📋 Users asked to submit screen recording:</b>\n" + "\n".join(mentions)
+    message_text = "<b>📋 Users asked to submit screen recording:</b>\n" + "\n".join(f"{i}. {mention}" for i, mention in enumerate(mentions, start=1))
     msg = bot.send_message(chat_id, message_text, parse_mode="HTML")
-    track_message(chat_id, msg.message_id)
+    track_message(chat_id, msg.message.id)
 
 
 def handle_done_keywords(bot, message: Message, group_id):
@@ -333,4 +336,4 @@ def handle_done_keywords(bot, message: Message, group_id):
             msg = bot.send_message(message.chat.id, f"⚠️ {mention} hasn't sent any links.", parse_mode="HTML")
         else:
             msg = bot.send_message(message.chat.id, f"⚠️ Unknown error or group not found.", parse_mode="HTML")
-        track_message(message.chat.id, msg.message_id)
+        track_message(message.chat.id, msg.message.id)
