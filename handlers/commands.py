@@ -157,7 +157,7 @@ def handle_group_command(bot, message, db):
         bot.send_message(chat_id, msg, parse_mode="Markdown")
     elif text.startswith("/link"):
         handle_link_command(bot, message)
-    elif text.startswith("/sr"):  # or just "/sr"
+    elif text == "/sr":  # or just "/sr"
         handle_sr_command(bot, message)
     elif text == "/srlist":
         handle_srlist_command(bot, message)
