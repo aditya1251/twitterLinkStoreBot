@@ -85,7 +85,7 @@ def mark_user_verified(group_id, user_id):
                 msg["check"] = True
                 x_usernames.add(msg["x_username"])
 
-        return x_usernames[0] if x_usernames else None
+        return list(x_usernames)[0] if x_usernames else None
 
 def get_users_with_multiple_links(group_id):
     from collections import defaultdict
