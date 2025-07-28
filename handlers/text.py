@@ -45,6 +45,6 @@ def handle_group_text(bot, message, db):
         done_keywords = ["done", "all done", "ad", "all dn"]
         if message.text.lower().strip() in done_keywords:
             if x_username := mark_user_verified(group_id, user.id):
-                bot.reply_to(message, f"@{user.username or user.first_name}'s X account: {x_username}.")
+                bot.reply_to(message, f"𝕏 ID @{x_username}")
             else:
-                bot.send_message(chat.id, f"⚠️ @{user.username or user.first_name} already verified or no links sent.")
+                bot.send_message(chat.id, f"𝕏 already verified")

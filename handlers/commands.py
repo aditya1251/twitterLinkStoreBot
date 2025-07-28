@@ -136,8 +136,6 @@ def handle_group_command(bot, message, db):
         else:
             bot.send_message(chat_id, f"<b>📄 🚨 USERS LIST 🚨: {count}</b>\n\n{result}", parse_mode="HTML")
 
-
-
     elif text == "/unsafe":
         if not is_user_admin(bot, chat_id, user_id):
             bot.send_message(chat_id, "❌ Only admins can use this command.")
@@ -154,10 +152,7 @@ def handle_group_command(bot, message, db):
         else:
             msg = "<b>⚠️ Unverified Users:</b>\n"
             for user in users:
-                uid = user["user_id"]
-                fname = user.get("first_name", "User")
-                mention = f'<a href="tg://user?id={uid}">{fname}</a>'
-                msg += f"\n• {mention} (ID: <code>{uid}</code>)"
+                msg += f"\n• {user}"  # user is already an HTML-formatted mention
             bot.send_message(chat_id, msg, parse_mode="HTML")
 
     elif text == "/muteunsafe":
