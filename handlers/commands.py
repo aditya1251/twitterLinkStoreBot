@@ -11,6 +11,7 @@ from utils.group_session import (
     set_verification_phase,
     get_all_links_count,
     handle_close_group,
+    handle_add_to_ad_command
 )
 
 
@@ -128,12 +129,13 @@ def handle_group_command(bot, message, db):
             bot.send_message(chat_id, "❌ Only admins can use this command.")
             return
 
-        result = get_formatted_user_link_list(chat_id)
+        result, count = get_formatted_user_link_list(chat_id)
 
         if not result:
             bot.send_message(chat_id, "ℹ️ No users have submitted X links yet.")
         else:
-            bot.send_message(chat_id, f"<b>📄 Submitted Users:</b>\n\n{result}", parse_mode="HTML")
+            bot.send_message(chat_id, f"<b>📄 🚨 USERS LIST 🚨: {count}</b>\n\n{result}", parse_mode="HTML")
+
 
 
     elif text == "/unsafe":
@@ -194,6 +196,9 @@ def handle_group_command(bot, message, db):
 
     elif text.startswith("/link"):
         handle_link_command(bot, message)
+    
+    elif text == "/add_to_ad":
+        handle_add_to_ad_command(bot, message)
 
     elif text == "/sr":
         handle_sr_command(bot, message)

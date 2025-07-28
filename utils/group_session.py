@@ -11,12 +11,14 @@ lock = Lock()
 def normalize_gid(group_id):
     return str(group_id)
 
+
 def start_group_session(group_id):
     gid = normalize_gid(group_id)
     with lock:
         active_groups[gid] = "collecting"
         group_messages[gid] = []
         sr_requested_users[gid] = set()
+
 
 def stop_group_session(group_id):
     gid = normalize_gid(group_id)
@@ -25,33 +27,41 @@ def stop_group_session(group_id):
         sr_requested_users.pop(gid, None)
         return group_messages.pop(gid, [])
 
+
 def set_verification_phase(group_id):
     gid = normalize_gid(group_id)
     with lock:
         if gid in active_groups:
             active_groups[gid] = "verifying"
 
+
 def get_group_phase(group_id):
     return active_groups.get(normalize_gid(group_id))
 
+
 def is_group_verifying(group_id):
     return active_groups.get(normalize_gid(group_id)) == "verifying"
+
 
 def add_group_message(group_id, message_data: dict):
     gid = normalize_gid(group_id)
     with lock:
         group_messages.setdefault(gid, []).append(message_data)
 
+
 def get_group_messages(group_id):
     return group_messages.get(normalize_gid(group_id), [])
+
 
 def request_sr(group_id, user_id):
     gid = normalize_gid(group_id)
     with lock:
         sr_requested_users.setdefault(gid, set()).add(user_id)
 
+
 def get_sr_users(group_id):
     return sr_requested_users.get(normalize_gid(group_id), set())
+
 
 def store_group_message(group_id, user_id, username, link, x_username=None, first_name=None):
     gid = normalize_gid(group_id)
@@ -80,6 +90,7 @@ def handle_close_group(bot, message):
         active_groups[gid] = "closed"
     bot.send_video(message.chat.id, open("gifs/stop.mp4", "rb"))
 
+
 def mark_user_verified(group_id, user_id):
     gid = normalize_gid(group_id)
     x_usernames = set()
@@ -103,6 +114,7 @@ def mark_user_verified(group_id, user_id):
         else:
             return list(x_usernames)[0], "verified"
 
+
 def get_users_with_multiple_links(group_id):
     from collections import defaultdict
     gid = normalize_gid(group_id)
@@ -122,12 +134,14 @@ def get_users_with_multiple_links(group_id):
             })
     return result
 
+
 def get_formatted_user_link_list(group_id):
     gid = normalize_gid(group_id)
     from collections import defaultdict
 
-    grouped = defaultdict(lambda: {"x_username": None, "first_name": None, "links": []})
-    
+    grouped = defaultdict(
+        lambda: {"x_username": None, "first_name": None, "links": []})
+
     for msg in group_messages.get(gid, []):
         uid = msg["user_id"]
         grouped[uid]["x_username"] = msg["x_username"]
@@ -141,11 +155,11 @@ def get_formatted_user_link_list(group_id):
     for i, (uid, data) in enumerate(grouped.items(), start=1):
         name = f'<a href="tg://user?id={uid}">{data["first_name"]}</a>'
         x_username = data["x_username"]
-        links = "\n".join(data["links"])
-        block = f"{i}. {name} ✦ (@{x_username})\n{links}"
+        block = f"{i}. {name} ✦ (<a href=\"https://x.com/{x_username}\">{x_username}</a>)"
         result.append(block)
 
-    return "\n\n".join(result)
+    return "\n".join(result), len(result)
+
 
 def get_unverified_users(group_id):
     gid = normalize_gid(group_id)
@@ -160,13 +174,16 @@ def get_unverified_users(group_id):
         user_id = msg["user_id"]
         if not msg["check"] and user_id not in seen:
             seen.add(user_id)
-            unverified_users.append(f'<a href="tg://user?id={user_id}">{msg.get("first_name", "User")}</a>')
+            unverified_users.append(
+                f'<a href="tg://user?id={user_id}">{msg.get("first_name", "User")}</a>')
 
     return unverified_users
+
 
 def get_all_links_count(group_id):
     gid = normalize_gid(group_id)
     return len(group_messages.get(gid, []))
+
 
 def get_unverified_users_full(group_id):
     gid = normalize_gid(group_id)
@@ -188,6 +205,26 @@ def get_unverified_users_full(group_id):
             })
     return users
 
+
+def handle_add_to_ad_command(bot, message):
+    chat_id = normalize_gid(message.chat.id)
+
+    reply_to_message = message.reply_to_message
+    if not reply_to_message:
+        bot.reply_to(
+            message, "↩️ Please reply to the user's message to get their links.")
+        return
+
+    user_id = reply_to_message.from_user.id
+    display_name = f'<a href="tg://user?id={user_id}">{reply_to_message.from_user.first_name}</a>'
+
+    for entry in group_messages.get(chat_id, []):
+        if entry["user_id"] == user_id:
+            entry["check"] = True
+
+    bot.reply_to(message, f"{display_name} have been marked as AD.")
+
+
 def handle_link_command(bot, message: Message):
     chat_id = normalize_gid(message.chat.id)
     from_id = message.from_user.id
@@ -197,17 +234,20 @@ def handle_link_command(bot, message: Message):
         return
 
     if not message.reply_to_message:
-        bot.reply_to(message, "↩️ Please reply to the user's message to get their links.")
+        bot.reply_to(
+            message, "↩️ Please reply to the user's message to get their links.")
         return
 
     target_user = message.reply_to_message.from_user
     user_id = target_user.id
     display_name = f'<a href="tg://user?id={user_id}">{target_user.first_name}</a>'
 
-    links = [entry["link"] for entry in group_messages.get(chat_id, []) if entry["user_id"] == user_id]
+    links = [entry["link"] for entry in group_messages.get(
+        chat_id, []) if entry["user_id"] == user_id]
 
     if not links:
-        bot.reply_to(message, f"❌ No links found for {display_name}.", parse_mode="HTML")
+        bot.reply_to(
+            message, f"❌ No links found for {display_name}.", parse_mode="HTML")
         return
 
     link_lines = "\n".join([f"{i+1}. {l}" for i, l in enumerate(links)])
@@ -216,6 +256,7 @@ def handle_link_command(bot, message: Message):
         f"<b>🔗 Links shared by {display_name}:</b>\n{link_lines}",
         parse_mode="HTML"
     )
+
 
 def handle_sr_command(bot, message: Message):
     chat_id = normalize_gid(message.chat.id)
@@ -226,11 +267,8 @@ def handle_sr_command(bot, message: Message):
         return
 
     if not message.reply_to_message:
-        bot.reply_to(message, "↩️ Reply to a user you want to request screen recording from.")
-        return
-
-    if not is_group_verifying(chat_id):
-        bot.reply_to(message, "⚠️ This group is not in the verifying phase.")
+        bot.reply_to(
+            message, "↩️ Reply to a user you want to request screen recording from.")
         return
 
     user = message.reply_to_message.from_user
@@ -239,9 +277,10 @@ def handle_sr_command(bot, message: Message):
     mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
     bot.send_message(
         chat_id,
-        f"📹 {mention}, please send a <b>screen recording</b> of your likes to the admin in DM.",
+        f"📹 {mention}, Please recheck your likes are missing and send a screen recording 'DM' Make sure your profile is visible too!",
         parse_mode="HTML"
     )
+
 
 def handle_srlist_command(bot, message: Message):
     chat_id = normalize_gid(message.chat.id)
@@ -260,16 +299,19 @@ def handle_srlist_command(bot, message: Message):
         if entry["user_id"] in sr_users:
             first_name = entry.get("first_name", "User")
             uid = entry["user_id"]
-            mentions.append(f"• <a href=\"tg://user?id={uid}\">{first_name}</a> (ID: <code>{uid}</code>)")
+            mentions.append(
+                f"• <a href=\"tg://user?id={uid}\">{first_name}</a> (ID: <code>{uid}</code>)")
 
     if not mentions:
         mentions = [f"• User ID: <code>{uid}</code>" for uid in sr_users]
 
     bot.send_message(
         chat_id,
-        "<b>📋 Users asked to submit screen recording:</b>\n" + "\n".join(mentions),
+        "<b>📋 Users asked to submit screen recording:</b>\n" +
+        "\n".join(mentions),
         parse_mode="HTML"
     )
+
 
 def handle_done_keywords(bot, message: Message, group_id):
     user = message.from_user
@@ -278,10 +320,14 @@ def handle_done_keywords(bot, message: Message, group_id):
         x_username, status = mark_user_verified(group_id, user.id)
         mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
         if status == "verified":
-            bot.reply_to(message, f"{mention}'s X account: {x_username}.", parse_mode="HTML")
+            bot.reply_to(
+                message, f"{mention}'s X account: {x_username}.", parse_mode="HTML")
         elif status == "already_verified":
-            bot.send_message(message.chat.id, f"⚠️ {mention} is already verified.", parse_mode="HTML")
+            bot.send_message(
+                message.chat.id, f"⚠️ {mention} is already verified.", parse_mode="HTML")
         elif status == "no_messages":
-            bot.send_message(message.chat.id, f"⚠️ {mention} hasn't sent any links.", parse_mode="HTML")
+            bot.send_message(
+                message.chat.id, f"⚠️ {mention} hasn't sent any links.", parse_mode="HTML")
         else:
-            bot.send_message(message.chat.id, f"⚠️ Unknown error or group not found.", parse_mode="HTML")
+            bot.send_message(
+                message.chat.id, f"⚠️ Unknown error or group not found.", parse_mode="HTML")
