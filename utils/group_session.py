@@ -74,6 +74,8 @@ def store_group_message(group_id, user_id, username, link, x_username=None):
 
 def mark_user_verified(group_id, user_id):
     gid = normalize_gid(group_id)
+    x_usernames = set()
+
     with lock:
         if gid not in group_messages:
             return None
@@ -81,8 +83,9 @@ def mark_user_verified(group_id, user_id):
         for msg in group_messages[gid]:
             if msg["user_id"] == user_id and not msg["check"]:
                 msg["check"] = True
-                return msg["x_username"]
-        return None
+                x_usernames.add(msg["x_username"])
+
+        return x_usernames[0] if x_usernames else None
 
 def get_users_with_multiple_links(group_id):
     from collections import defaultdict
@@ -108,6 +111,10 @@ def get_unverified_users(group_id):
     seen = set()
     unverified_users = []
 
+    phase = get_group_phase(gid)
+    if phase != "verifying":
+        return 'notVerifyingphase'
+
     for msg in group_messages.get(gid, []):
         user_id = msg["user_id"]
         if not msg["check"] and user_id not in seen:
@@ -122,6 +129,10 @@ def get_unverified_users_full(group_id):
     gid = normalize_gid(group_id)
     seen = set()
     users = []
+
+    phase = get_group_phase(gid)
+    if phase != "verifying":
+        return 'notVerifyingphase'
 
     for msg in group_messages.get(gid, []):
         uid = msg["user_id"]
@@ -159,8 +170,8 @@ def handle_link_command(bot, message: Message):
     link_lines = "\n".join([f"{i+1}. {l}" for i, l in enumerate(links)])
     bot.reply_to(
         message,
-        f"🔗 *Links shared by @{username}:*\n{link_lines}",
-        parse_mode="Markdown"
+        f"<b>🔗 Links shared by @{username}:</b>\n{link_lines}",
+        parse_mode="HTML"
     )
 
 def handle_sr_command(bot, message: Message):
@@ -184,8 +195,8 @@ def handle_sr_command(bot, message: Message):
 
     bot.send_message(
         chat_id,
-        f"📹 @{user.username or user.first_name}, please send a *screen recording* of your likes to the admin in DM.",
-        parse_mode="Markdown"
+        f"📹 <b>@{user.username or user.first_name}</b>, please send a <b>screen recording</b> of your likes to the admin in DM.",
+        parse_mode="HTML"
     )
 
 def handle_srlist_command(bot, message: Message):
@@ -204,13 +215,13 @@ def handle_srlist_command(bot, message: Message):
     for entry in get_group_messages(chat_id):
         if entry["user_id"] in sr_users:
             name = entry.get("username") or f"User {entry['user_id']}"
-            mentions.append(f"• @{name} (ID: {entry['user_id']})")
+            mentions.append(f"• @{name} (ID: <code>{entry['user_id']}</code>)")
 
     if not mentions:
-        mentions = [f"• User ID: {uid}" for uid in sr_users]
+        mentions = [f"• User ID: <code>{uid}</code>" for uid in sr_users]
 
     bot.send_message(
         chat_id,
-        "*📋 Users asked to submit screen recording:*\n" + "\n".join(mentions),
-        parse_mode="Markdown"
+        "<b>📋 Users asked to submit screen recording:</b>\n" + "\n".join(mentions),
+        parse_mode="HTML"
     )

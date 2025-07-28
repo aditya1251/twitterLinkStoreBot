@@ -58,7 +58,6 @@ def handle_update(update):
         else:
             handle_group_text(bot, message, db)
 
-
 @app.route("/webhook", methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':

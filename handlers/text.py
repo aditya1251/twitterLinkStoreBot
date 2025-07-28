@@ -3,7 +3,6 @@ from handlers.callbacks import pending_action
 from utils.group_manager import add_group, remove_group
 from config import ADMIN_IDS
 from utils.group_session import store_group_message, get_group_phase, mark_user_verified
-from utils.telegram import is_user_admin
 
 def handle_text(bot, message: Message, db):
     user_id = message.from_user.id

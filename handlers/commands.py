@@ -111,6 +111,10 @@ def handle_group_command(bot, message, db):
 
         users = get_unverified_users(chat_id)
 
+        if user == "notVerifyingphase":
+            bot.send_message(chat_id, "⚠️ This session is not in the verifying phase.")
+            return
+
         if not users:
             bot.send_message(chat_id, "✅ All users are verified.")
         else:
@@ -122,6 +126,10 @@ def handle_group_command(bot, message, db):
             return
 
         unverified = get_unverified_users_full(chat_id)
+
+        if unverified == "notVerifyingphase":
+            bot.send_message(chat_id, "⚠️ This session is not in the verifying phase.")
+            return
 
         if not unverified:
             bot.send_message(chat_id, "✅ No unverified users to mute.")
