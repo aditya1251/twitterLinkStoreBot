@@ -4,6 +4,7 @@ from utils.group_manager import add_group, remove_group
 from config import ADMIN_IDS
 from utils.group_session import store_group_message, get_group_phase, mark_user_verified
 from utils.message_tracker import track_message  # ✅ Import tracker
+from utils.telegram import is_user_admin
 
 
 def handle_text(bot, message: Message, db):
@@ -38,13 +39,17 @@ def handle_group_text(bot, message, db):
     group_id = chat.id
     phase = get_group_phase(group_id)
 
+    if is_user_admin(bot, chat.id, user.id):
+        return
+
     if phase == "collecting":
         store_group_message(
             group_id,
             user.id,
             user.username or user.first_name,
             message.text,
-            None  # you can extract x_username if needed
+            None,  # you can extract x_username if needed
+            user.first_name
         )
 
     elif phase == "verifying":

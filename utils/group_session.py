@@ -69,6 +69,8 @@ def store_group_message(group_id, user_id, username, link, x_username=None, firs
     with lock:
         if gid not in group_messages:
             group_messages[gid] = []
+        
+
 
         if not link.startswith("https://x.com"):
             return
