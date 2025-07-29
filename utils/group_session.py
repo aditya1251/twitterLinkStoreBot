@@ -6,6 +6,7 @@ from utils.message_tracker import track_message  # ✅ Import the tracker
 active_groups = {}
 group_messages = {}
 sr_requested_users = {}
+unique_x_usernames = {}
 lock = Lock()
 
 
@@ -63,30 +64,69 @@ def request_sr(group_id, user_id):
 def get_sr_users(group_id):
     return sr_requested_users.get(normalize_gid(group_id), set())
 
-
-def store_group_message(group_id, user_id, username, link, x_username=None, first_name=None):
+def store_group_message(bot, message, group_id, user_id, username, link, x_username=None, first_name=None):
     gid = normalize_gid(group_id)
     with lock:
         if gid not in group_messages:
             group_messages[gid] = []
-        
+            unique_x_usernames[gid] = set()
 
-
+        # only process x.com links
         if not link.startswith("https://x.com"):
             return
 
         x_username = link.split("/")[3]
 
-        group_messages[gid].append({
-            "number": len(group_messages[gid]) + 1,
+        # First time this X username appears
+        if x_username not in unique_x_usernames[gid]:
+            unique_x_usernames[gid].add(x_username)
+            group_messages[gid].append({
+                "number": len(group_messages[gid]) + 1,
+                "user_id": user_id,
+                "username": username,
+                "first_name": first_name,
+                "link": link,
+                "x_username": x_username,
+                "check": False,
+            })
+            return
+
+        # Duplicate detected — collect all users who shared this X username
+        offenders = [
+            entry for entry in group_messages[gid]
+            if entry["x_username"] == x_username
+        ]
+        offenders.append({
             "user_id": user_id,
             "username": username,
             "first_name": first_name,
-            "link": link,
-            "x_username": x_username,
-            "check": False,
         })
 
+        # Create mention links
+        tags = []
+        for u in offenders:
+            name = u.get("first_name") or "User"
+            uid = u.get("user_id")
+            if uid:
+                tag = f'<a href="tg://user?id={uid}">{name}</a>'
+                tags.append(tag)
+
+        tags_str = ", ".join(sorted(set(tags)))
+
+        alert = (
+            f"⚠️ <b>Fraud Alert</b>\n"
+            f"Multiple Telegram users are sharing the same X account link: <code>{x_username}</code>\n"
+            f"Suspicious users: {tags_str}"
+        )
+
+        msg = bot.reply_to(
+            message,
+            text=alert,
+            parse_mode="HTML",
+        )
+        track_message(message.chat.id, msg.message_id)
+
+        return
 
 def handle_close_group(bot, message):
     gid = normalize_gid(message.chat.id)

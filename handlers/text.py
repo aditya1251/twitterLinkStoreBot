@@ -44,6 +44,8 @@ def handle_group_text(bot, message, db):
 
     if phase == "collecting":
         store_group_message(
+            bot,
+            message,
             group_id,
             user.id,
             user.username or user.first_name,
