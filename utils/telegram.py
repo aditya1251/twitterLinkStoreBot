@@ -4,6 +4,8 @@ from threading import Lock
 from datetime import datetime, timedelta
 from telebot import apihelper
 import telebot.types
+import re
+from datetime import datetime, timedelta
 
 _admins_cache = {}
 _lock = Lock()
@@ -48,8 +50,8 @@ def is_user_admin(bot, chat_id, user_id):
         print(f"[AdminCheckError] {e}")
         return False
 
-def mute_user(bot, chat_id, user_id, duration_days=3):
-    until_date = datetime.utcnow() + timedelta(days=duration_days)
+def mute_user(bot, chat_id, user_id, duration=timedelta(days=3)):
+    until_date = datetime.utcnow() + duration
     permissions = telebot.types.ChatPermissions(
         can_send_messages=False,
         can_send_media_messages=False,
@@ -68,3 +70,19 @@ def mute_user(bot, chat_id, user_id, duration_days=3):
     except apihelper.ApiTelegramException as e:
         print(f"[MuteError] Failed to mute {user_id} in {chat_id}: {e}")
         return False
+
+def parse_duration(duration_str):
+    """
+    Parses duration like "2d 10h 5m" into a timedelta.
+    Supported units: d (days), h (hours), m (minutes)
+    """
+    pattern = r"(?:(\d+)\s*d)?\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?"
+    match = re.match(pattern, duration_str.strip())
+    if not match:
+        return None
+
+    days = int(match.group(1)) if match.group(1) else 0
+    hours = int(match.group(2)) if match.group(2) else 0
+    minutes = int(match.group(3)) if match.group(3) else 0
+
+    return timedelta(days=days, hours=hours, minutes=minutes)

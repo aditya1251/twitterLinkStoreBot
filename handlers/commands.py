@@ -1,6 +1,6 @@
 import handlers.start as start
 import handlers.admin as admin
-from utils.telegram import is_user_admin, set_cached_admins, mute_user
+from utils.telegram import is_user_admin, set_cached_admins, mute_user,parse_duration
 from utils.group_session import (
     get_users_with_multiple_links,
     get_unverified_users,
@@ -14,6 +14,8 @@ from utils.group_session import (
     handle_add_to_ad_command
 )
 from utils.message_tracker import track_message ,delete_tracked_messages
+from datetime import timedelta
+
 
 
 
@@ -175,22 +177,28 @@ def handle_group_command(bot, message, db):
             msg = bot.send_message(chat_id, msg_text, parse_mode="HTML")
             track_message(chat_id, msg.message_id)  # ✅
 
-    elif text in ["/muteunsafe","/muteall"]:
+    elif text.startswith("/muteunsafe") or text.startswith("/muteall"):
         if not is_user_admin(bot, chat_id, user_id):
             msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
-            track_message(chat_id, msg.message_id)  # ✅
+            track_message(chat_id, msg.message_id)
+            return
+
+        args = text.split(maxsplit=1)
+        duration = parse_duration(args[1]) if len(args) > 1 else timedelta(days=3)
+        if duration is None:
+            msg = bot.send_message(chat_id, "⚠️ Invalid duration format. Use formats like: 2d 10h 5m")
+            track_message(chat_id, msg.message_id)
             return
 
         unverified = get_unverified_users_full(chat_id)
-
         if unverified == "notVerifyingphase":
             msg = bot.send_message(chat_id, "⚠️ This session is not in the verifying phase.")
-            track_message(chat_id, msg.message_id)  # ✅
+            track_message(chat_id, msg.message_id)
             return
 
         if not unverified:
             msg = bot.send_message(chat_id, "✅ No unverified users to mute.")
-            track_message(chat_id, msg.message_id)  # ✅
+            track_message(chat_id, msg.message_id)
             return
 
         success_log = []
@@ -198,20 +206,20 @@ def handle_group_command(bot, message, db):
         for user in unverified:
             uid = user["user_id"]
             fname = user.get("first_name", "User")
-            if mute_user(bot, chat_id, uid):
+            if mute_user(bot, chat_id, uid, duration):
                 mention = f'<a href="tg://user?id={uid}">{fname}</a>'
                 success_log.append(f"• {mention} (ID: <code>{uid}</code>)")
             else:
                 failed.append(fname)
 
-        msg_text = "<b>🔇 Muted the following unverified users for 3 days:</b>\n\n"
+        msg_text = "<b>🔇 Muted the following unSafe users:</b>\n\n"
         msg_text += "\n".join(success_log)
 
         if failed:
             msg_text += "\n\n⚠️ <b>Failed to mute:</b>\n" + "\n".join(f"• {u}" for u in failed)
 
         msg = bot.send_message(chat_id, msg_text, parse_mode="HTML")
-        track_message(chat_id, msg.message_id)  # ✅
+        track_message(chat_id, msg.message_id)
 
     elif text.startswith("/link"):
         handle_link_command(bot, message)
