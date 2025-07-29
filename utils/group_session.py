@@ -19,6 +19,7 @@ def start_group_session(group_id):
     with lock:
         active_groups[gid] = "collecting"
         group_messages[gid] = []
+        unique_x_usernames[gid] = set()
         sr_requested_users[gid] = set()
 
 
@@ -27,6 +28,7 @@ def stop_group_session(group_id):
     with lock:
         active_groups.pop(gid, None)
         sr_requested_users.pop(gid, None)
+        unique_x_usernames.pop(gid, None)
         return group_messages.pop(gid, [])
 
 
@@ -124,7 +126,8 @@ def store_group_message(bot, message, group_id, user_id, username, link, x_usern
             text=alert,
             parse_mode="HTML",
         )
-        track_message(message.chat.id, msg.message_id)
+        track_message(message.chat.id, msg.message_id)  # ✅
+        
 
         return
 
