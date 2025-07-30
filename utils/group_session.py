@@ -131,12 +131,32 @@ def store_group_message(bot, message, group_id, user_id, username, link, x_usern
 
         return
 
+from telebot.types import ChatPermissions
+
 def handle_close_group(bot, message):
     gid = normalize_gid(message.chat.id)
     with lock:
         active_groups[gid] = "closed"
-    msg = bot.send_video(message.chat.id, open("gifs/stop.mp4", "rb"))
-    track_message(message.chat.id, msg.message_id)
+
+    # ✅ Try to restrict all user permissions
+    try:
+        restricted_permissions = ChatPermissions(
+            can_send_messages=False,
+            can_send_media_messages=False,
+            can_send_polls=False,
+            can_send_other_messages=False,
+            can_add_web_page_previews=False,
+        )
+        bot.set_chat_permissions(message.chat.id, restricted_permissions)
+    except Exception:
+        pass  # Silently ignore errors (e.g. bot not admin)
+
+    # ✅ Send closing video
+    try:
+        msg = bot.send_video(message.chat.id, open("gifs/stop.mp4", "rb"))
+        track_message(message.chat.id, msg.message_id)
+    except Exception:
+        pass  # Handle file issues silently
 
 
 def mark_user_verified(group_id, user_id):

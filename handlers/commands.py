@@ -15,6 +15,8 @@ from utils.group_session import (
 )
 from utils.message_tracker import track_message ,delete_tracked_messages
 from datetime import timedelta
+from telebot.types import ChatPermissions
+
 
 
 
@@ -78,10 +80,10 @@ def handle_group_command(bot, message, db):
     if text in ["/start", "/starts"]:
         start.handle_start_group(bot, message)
 
-    elif text == "/close":
+    elif text in ["/close", "/closes","/stop"]:
         handle_close_group(bot, message)
 
-    elif text in ["/end", "/stop"]:
+    elif text in ["/end"]:
         start.handle_cancel_group(bot, message, db)
 
     elif text == "/refresh_admins":
@@ -98,11 +100,27 @@ def handle_group_command(bot, message, db):
     elif text in ["/verify", "/track", "/check"]:
         if is_user_admin(bot, chat_id, user_id):
             set_verification_phase(chat_id)
-            msg = bot.send_message(chat_id, "✅ Ad tracking has started! I will track 'ad', 'all done', 'all dn', 'done' messages.")
-            track_message(chat_id, msg.message_id)  # ✅
+
+            # ✅ Try to allow all users to send messages, media, and stickers
+            try:
+                permissions = ChatPermissions(
+                    can_send_messages=True,
+                    can_send_media_messages=True,
+                    can_send_other_messages=True,  # Stickers, GIFs, etc.
+                    can_add_web_page_previews=True
+                )
+                bot.set_chat_permissions(chat_id, permissions)
+            except Exception:
+                pass  # Silently ignore permission errors
+
+            msg = bot.send_message(
+                chat_id,
+                "✅ Ad tracking has started! I will track 'ad', 'all done', 'all dn', 'done' messages."
+            )
+            track_message(chat_id, msg.message_id)
         else:
             msg = bot.send_message(chat_id, "❌ Only admins can enable verification.")
-            track_message(chat_id, msg.message_id)  # ✅
+            track_message(chat_id, msg.message_id)
 
     elif text == "/count":
         if not is_user_admin(bot, chat_id, user_id):
