@@ -1,11 +1,9 @@
-# utils/admin_cache.py
-
 from threading import Lock
 from datetime import datetime, timedelta
 from telebot import apihelper
 import telebot.types
 import re
-from datetime import datetime, timedelta
+from handlers.admin import notify_dev  # ✅ import notify_dev
 
 _admins_cache = {}
 _lock = Lock()
@@ -47,7 +45,9 @@ def is_user_admin(bot, chat_id, user_id):
         set_cached_admins(chat_id, admin_ids)
         return user_id in admin_ids
     except Exception as e:
-        print(f"[AdminCheckError] {e}")
+        # ✅ Notify dev
+        context = "is_user_admin"
+        notify_dev(bot, e, context, message=None)
         return False
 
 def mute_user(bot, chat_id, user_id, duration=timedelta(days=3)):
@@ -68,7 +68,12 @@ def mute_user(bot, chat_id, user_id, duration=timedelta(days=3)):
         )
         return True
     except apihelper.ApiTelegramException as e:
-        print(f"[MuteError] Failed to mute {user_id} in {chat_id}: {e}")
+        # ✅ Notify dev
+        context = "mute_user"
+        notify_dev(bot, e, context)
+        return False
+    except Exception as e:
+        notify_dev(bot, e, "mute_user_general")
         return False
 
 def parse_duration(duration_str):
