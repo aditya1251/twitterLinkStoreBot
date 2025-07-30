@@ -216,7 +216,7 @@ def get_formatted_user_link_list(group_id):
         grouped[uid]["links"].append(msg["link"])
 
     if not grouped:
-        return "", 0
+        return None, 0
 
     result = []
     for i, (uid, data) in enumerate(grouped.items(), start=1):
