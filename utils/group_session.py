@@ -61,10 +61,18 @@ def request_sr(group_id, user_id):
     gid = normalize_gid(group_id)
     with lock:
         sr_requested_users.setdefault(gid, set()).add(user_id)
+def request_sr(group_id, user_id):
+    gid = normalize_gid(group_id)
+    with lock:
+        sr_requested_users.setdefault(gid, set()).add(user_id)
+        for msg in group_messages.get(gid, []):
+            if msg["user_id"] == user_id:
+                msg["check"] = False        
 
 
 def get_sr_users(group_id):
     return sr_requested_users.get(normalize_gid(group_id), set())
+    
 
 def store_group_message(bot, message, group_id, user_id, username, link, x_username=None, first_name=None):
     gid = normalize_gid(group_id)
@@ -96,8 +104,19 @@ def store_group_message(bot, message, group_id, user_id, username, link, x_usern
         # Duplicate detected — collect all users who shared this X username
         offenders = [
             entry for entry in group_messages[gid]
-            if entry["x_username"] == x_username
+            if entry["x_username"] == x_username and entry["user_id"] != user_id
         ]
+        if len(offenders) < 1:
+            group_messages[gid].append({
+                "number": len(group_messages[gid]) + 1,
+                "user_id": user_id,
+                "username": username,
+                "first_name": first_name,
+                "link": link,
+                "x_username": x_username,
+                "check": False,
+            })
+            return
         offenders.append({
             "user_id": user_id,
             "username": username,
@@ -365,7 +384,6 @@ def handle_sr_command(bot, message: Message):
     except Exception as e:
         notify_dev(bot, e, "handle_sr_command", message)
 
-
 def handle_srlist_command(bot, message: Message):
     try:
         chat_id = normalize_gid(message.chat.id)
@@ -385,22 +403,31 @@ def handle_srlist_command(bot, message: Message):
         seen_users = set()
         for entry in get_group_messages(chat_id):
             if entry["user_id"] in sr_users and entry["user_id"] not in seen_users:
-                first_name = entry.get("first_name", "User")
-                uid = entry["user_id"]
-                mentions.append(f"<a href=\"tg://user?id={uid}\">{first_name}</a>")
-                seen_users.add(uid)
+                username = entry.get("username")
+                if username:
+                    mentions.append(f"@{username}")
+                else:
+                    uid = entry["user_id"]
+                    num = entry["number"]
+                    first_name = entry.get("first_name", "User")
+                    mentions.append(f"{num}. <a href=\"tg://user?id={uid}\">{first_name}</a>\n")
+                seen_users.add(entry["user_id"])
 
         if not mentions:
             mentions = [f"User ID: <code>{uid}</code>" for uid in sr_users]
 
-        message_text = "<b>📋 Users asked to submit screen recording:</b>\n" + "\n".join(f"{i}. {mention}" for i, mention in enumerate(mentions, start=1))
-        msg = bot.send_message(chat_id, message_text, parse_mode="HTML")
+        message_text = (
+            "📋 <b>These users <i>need</i> to recheck and "
+            "<u>send a screen recording video</u> in this group with your own X/twitter profile visible in it must</b>‼️📛📛\n\n"
+            "🚫 <b>If you guys ignore sending SR, you will be marked as a scammer and muted strictly from the group.</b> 🚫🚫\n\n"
+        )
+        message_text += "\n".join(f"{mention}" for mention in enumerate(mentions))
+
+        msg = bot.send_message(chat_id, message_text, parse_mode="HTML", disable_web_page_preview=True)
         track_message(chat_id, msg.message_id)
 
     except Exception as e:
         notify_dev(bot, e, "handle_srlist_command", message)
-
-
 
 def handle_done_keywords(bot, message: Message, group_id):
     try:

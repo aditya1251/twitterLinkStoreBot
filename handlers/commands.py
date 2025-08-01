@@ -1,7 +1,7 @@
 import handlers.start as start
 import handlers.admin as admin
 from handlers.admin import notify_dev
-from utils.telegram import is_user_admin, set_cached_admins, mute_user,parse_duration
+from utils.telegram import is_user_admin, set_cached_admins, mute_user, parse_duration
 from utils.group_session import (
     get_users_with_multiple_links,
     get_unverified_users,
@@ -14,9 +14,10 @@ from utils.group_session import (
     handle_close_group,
     handle_add_to_ad_command
 )
-from utils.message_tracker import track_message ,delete_tracked_messages
+from utils.message_tracker import track_message, delete_tracked_messages
 from datetime import timedelta
 from telebot.types import ChatPermissions
+
 
 def handle_command(bot, message, db):
     chat_id = message.chat.id
@@ -54,16 +55,26 @@ def handle_command(bot, message, db):
                     "/help — Show this help menu\n\n"
                     "👥 <b>Group Commands:</b>\n"
                     "/start — Activate group features\n"
-                    "/refresh_admins — Refresh admin list (admin only)\n"
-                    "/verify — Start verifying mode (admin only)\n"
-                    "/multi — Show users with multiple links (admin only)\n"
-                    "/unsafe — List unverified users (admin only)\n"
-                    "/muteunsafe — Mute all unverified users for 3 days (admin only)\n"
-                    "/link — (Reply) Get all links shared by a user (admin only)\n"
-                    "/sr — (Reply) Ask a user to submit screen recording in DM (admin only)\n"
-                    "/srlist — List users asked to submit screen recordings (admin only)\n\n"
+                    "/refresh_admins — Refresh admin list\n"
+                    "/verify — Start verifying mode\n"
+                    "/multi — Show users with multiple links\n"
+                    "/list — List users who submitted required links\n"
+                    "/count — Show total number of users who submitted links\n"
+                    "/unsafe — List unverified users\n"
+                    "/muteunsafe [duration] — Mute all unverified users (default 3d)\n"
+                    "/muteall [duration] — Alias for /muteunsafe\n"
+                    "/link — (Reply) Get all links shared by a user\n"
+                    "/sr — (Reply) Ask a user to submit screen recording in DM\n"
+                    "/srlist — List users asked to submit screen recordings\n"
+                    "/close — Close the current group session\n"
+                    "/end — End the current group session\n"
+                    "/add_to_ad — Add user to ad list\n"
+                    "/rule — Show group rules for like sessions\n"
+                    "/clear — Clear bot's tracked messages\n\n"
                     "🛠️ <b>Admin Panel:</b>\n"
-                    "/managegroups — Manage allowed groups (admin only in private chat)"
+                    "/managegroups — Manage allowed groups (in private chat)\n\n"
+                    "🕓 <b>Duration Format:</b>\n"
+                    "Use formats like: <code>2d 5h 30m</code> for duration-based commands."
                 )
                 msg = bot.send_message(chat_id, help_text, parse_mode="HTML")
                 track_message(chat_id, msg.message_id)
@@ -78,7 +89,8 @@ def handle_command(bot, message, db):
 
         else:
             try:
-                msg = bot.send_message(chat_id, "🤔 Unknown command. Use /help.")
+                msg = bot.send_message(
+                    chat_id, "🤔 Unknown command. Use /help.")
                 track_message(chat_id, msg.message_id)
             except Exception as e:
                 notify_dev(bot, e, "Unknown command", message)
@@ -118,16 +130,39 @@ def handle_group_command(bot, message, db):
             if is_user_admin(bot, chat_id, user_id):
                 try:
                     admins = bot.get_chat_administrators(chat_id)
-                    set_cached_admins(chat_id, [admin.user.id for admin in admins])
+                    set_cached_admins(
+                        chat_id, [admin.user.id for admin in admins])
                     msg = bot.send_message(chat_id, "✅ Admin list refreshed.")
                     track_message(chat_id, msg.message_id)
                 except Exception as e:
                     notify_dev(bot, e, "/refresh_admins", message)
                     try:
-                        msg = bot.send_message(chat_id, "⚠️ Failed to refresh admins.")
+                        msg = bot.send_message(
+                            chat_id, "⚠️ Failed to refresh admins.")
                         track_message(chat_id, msg.message_id)
                     except:
                         pass
+        elif text == "/rule":
+            try:
+                rules_text = (
+                    "📛📛 <b>Likes Group Rules:</b>\n\n"
+                    "💜 please follow these rules during each session:\n\n"
+                    "1️⃣ <b>Link Drop Time</b>\n"
+                    "🕐 You have 1 hour to share your tweet link in the group.\n\n"
+                    "2️⃣ <b>1 Link Per Person</b>\n"
+                    "➤ Only one post per user is allowed per session. No double Link ❌.\n\n"
+                    "3️⃣ <b>TL id</b> 🆔\n"
+                    "🔁 After 1 hour, we’ll start reposting all shared tweets on our TL account\n\n"
+                    "4️⃣ <b>Like All Posts</b>\n"
+                    "❤️ You must like all shared tweets, from top to bottom, until we post “Open” under the last tweet.\n\n"
+                    "5️⃣ <b>Mark Completion</b>\n"
+                    "✅ Once done, typing \"AD\" or \"All Done\" in the group is mandatory."
+                )
+                msg = bot.send_message(chat_id, rules_text, parse_mode="HTML", disable_web_page_preview=True)
+                track_message(chat_id, msg.message_id)
+            except Exception as e:
+                notify_dev(bot, e, "/rule", message)
+
 
         elif text in ["/verify", "/track", "/check"]:
             if is_user_admin(bot, chat_id, user_id):
@@ -149,7 +184,8 @@ def handle_group_command(bot, message, db):
                     notify_dev(bot, e, "/verify", message)
             else:
                 try:
-                    msg = bot.send_message(chat_id, "❌ Only admins can enable verification.")
+                    msg = bot.send_message(
+                        chat_id, "❌ Only admins can enable verification.")
                     track_message(chat_id, msg.message_id)
                 except:
                     pass
@@ -157,7 +193,8 @@ def handle_group_command(bot, message, db):
         elif text == "/count":
             if not is_user_admin(bot, chat_id, user_id):
                 try:
-                    msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
+                    msg = bot.send_message(
+                        chat_id, "❌ Only admins can use this command.")
                     track_message(chat_id, msg.message_id)
                 except:
                     pass
@@ -172,7 +209,8 @@ def handle_group_command(bot, message, db):
         elif text == "/multi":
             if not is_user_admin(bot, chat_id, user_id):
                 try:
-                    msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
+                    msg = bot.send_message(
+                        chat_id, "❌ Only admins can use this command.")
                     track_message(chat_id, msg.message_id)
                 except:
                     pass
@@ -182,13 +220,15 @@ def handle_group_command(bot, message, db):
                 users = get_users_with_multiple_links(chat_id)
 
                 if not users:
-                    msg = bot.send_message(chat_id, "ℹ️ No users with multiple links.")
+                    msg = bot.send_message(
+                        chat_id, "ℹ️ No users with multiple links.")
                     track_message(chat_id, msg.message_id)
                     return
 
                 response = "<b>📊 Users with Multiple Links:</b>\n\n"
                 for user in users:
-                    name_display = f"@{user['username']}" if user.get("username") else f"ID: <code>{user['user_id']}</code>"
+                    name_display = f"@{user['username']}" if user.get(
+                        "username") else f"ID: <code>{user['user_id']}</code>"
                     response += f"👤 <b>{name_display}</b> — {user['count']} links\n"
                     for idx, link in enumerate(user["links"], start=1):
                         response += f"{idx}. {link}\n"
@@ -204,7 +244,8 @@ def handle_group_command(bot, message, db):
 
             if not is_user_admin(bot, chat_id, user_id):
                 try:
-                    msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
+                    msg = bot.send_message(
+                        chat_id, "❌ Only admins can use this command.")
                     track_message(chat_id, msg.message_id)
                 except:
                     pass
@@ -214,9 +255,11 @@ def handle_group_command(bot, message, db):
                 result, count = get_formatted_user_link_list(chat_id)
 
                 if not result:
-                    msg = bot.send_message(chat_id, "ℹ️ No users have submitted X links yet.")
+                    msg = bot.send_message(
+                        chat_id, "ℹ️ No users have submitted X links yet.")
                 else:
-                    msg = bot.send_message(chat_id, f"<b>🚨 USERS LIST 🚨: {count}</b>\n\n{result}", parse_mode="HTML")
+                    msg = bot.send_message(
+                        chat_id, f"<b>🚨 USERS LIST 🚨: {count}</b>\n\n{result}", parse_mode="HTML")
                 track_message(chat_id, msg.message_id)
             except Exception as e:
                 notify_dev(bot, e, "/list", message)
@@ -224,7 +267,8 @@ def handle_group_command(bot, message, db):
         elif text == "/unsafe":
             if not is_user_admin(bot, chat_id, user_id):
                 try:
-                    msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
+                    msg = bot.send_message(
+                        chat_id, "❌ Only admins can use this command.")
                     track_message(chat_id, msg.message_id)
                 except:
                     pass
@@ -234,7 +278,8 @@ def handle_group_command(bot, message, db):
                 users = get_unverified_users(chat_id)
 
                 if users == "notVerifyingphase":
-                    msg = bot.send_message(chat_id, "⚠️ This session is not in the verifying phase.")
+                    msg = bot.send_message(
+                        chat_id, "⚠️ This session is not in the verifying phase.")
                     track_message(chat_id, msg.message_id)
                     return
 
@@ -244,7 +289,8 @@ def handle_group_command(bot, message, db):
                     msg_text = "<b>⚠️ Unsafe Users:</b>\n"
                     for user in users:
                         msg_text += f"\n• {user}"
-                    msg = bot.send_message(chat_id, msg_text, parse_mode="HTML")
+                    msg = bot.send_message(
+                        chat_id, msg_text, parse_mode="HTML")
 
                 track_message(chat_id, msg.message_id)
             except Exception as e:
@@ -253,7 +299,8 @@ def handle_group_command(bot, message, db):
         elif text.startswith("/muteunsafe") or text.startswith("/muteall"):
             if not is_user_admin(bot, chat_id, user_id):
                 try:
-                    msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
+                    msg = bot.send_message(
+                        chat_id, "❌ Only admins can use this command.")
                     track_message(chat_id, msg.message_id)
                 except:
                     pass
@@ -261,21 +308,25 @@ def handle_group_command(bot, message, db):
 
             try:
                 args = text.split(maxsplit=1)
-                duration = parse_duration(args[1]) if len(args) > 1 else timedelta(days=3)
+                duration = parse_duration(args[1]) if len(
+                    args) > 1 else timedelta(days=3)
 
                 if duration is None:
-                    msg = bot.send_message(chat_id, "⚠️ Invalid duration format. Use formats like: 2d 10h 5m")
+                    msg = bot.send_message(
+                        chat_id, "⚠️ Invalid duration format. Use formats like: 2d 10h 5m")
                     track_message(chat_id, msg.message_id)
                     return
 
                 unverified = get_unverified_users_full(chat_id)
                 if unverified == "notVerifyingphase":
-                    msg = bot.send_message(chat_id, "⚠️ This session is not in the verifying phase.")
+                    msg = bot.send_message(
+                        chat_id, "⚠️ This session is not in the verifying phase.")
                     track_message(chat_id, msg.message_id)
                     return
 
                 if not unverified:
-                    msg = bot.send_message(chat_id, "✅ No unverified users to mute.")
+                    msg = bot.send_message(
+                        chat_id, "✅ No unverified users to mute.")
                     track_message(chat_id, msg.message_id)
                     return
 
@@ -286,7 +337,8 @@ def handle_group_command(bot, message, db):
                     fname = user.get("first_name", "User")
                     if mute_user(bot, chat_id, uid, duration):
                         mention = f'<a href="tg://user?id={uid}">{fname}</a>'
-                        success_log.append(f"• {mention} (ID: <code>{uid}</code>)")
+                        success_log.append(
+                            f"• {mention} (ID: <code>{uid}</code>)")
                     else:
                         failed.append(fname)
 
@@ -294,7 +346,8 @@ def handle_group_command(bot, message, db):
                 msg_text += "\n".join(success_log)
 
                 if failed:
-                    msg_text += "\n\n⚠️ <b>Failed to mute:</b>\n" + "\n".join(f"• {u}" for u in failed)
+                    msg_text += "\n\n⚠️ <b>Failed to mute:</b>\n" + \
+                        "\n".join(f"• {u}" for u in failed)
 
                 msg = bot.send_message(chat_id, msg_text, parse_mode="HTML")
                 track_message(chat_id, msg.message_id)
