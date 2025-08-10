@@ -259,7 +259,7 @@ def handle_group_command(bot, message, db):
                         chat_id, "ℹ️ No users have submitted X links yet.")
                 else:
                     msg = bot.send_message(
-                        chat_id, f"<b>🚨 USERS LIST 🚨: {count}</b>\n\n{result}", parse_mode="HTML")
+                        chat_id, f"<b>🚨 USERS LIST 🚨: {count}</b>\n\n{result}", parse_mode="HTML",disable_web_page_preview=True)
                 track_message(chat_id, msg.message_id)
             except Exception as e:
                 notify_dev(bot, e, "/list", message)

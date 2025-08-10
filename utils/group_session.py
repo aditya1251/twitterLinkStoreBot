@@ -261,7 +261,7 @@ def get_unverified_users(group_id):
         number = msg["number"]
         if not msg["check"] and user_id not in seen:
             seen.add(user_id)
-            unverified_users.append(f'{number}. <a href="tg://user?id={user_id}">{msg.get("first_name", "User")}</a>')
+            unverified_users.append(f'{number}. <a href="tg://user?id={user_id}">{msg.get("first_name", "User")}</a> 𝕏 <code>@{msg["x_username"]}</code>')
 
     return unverified_users
 
