@@ -378,7 +378,7 @@ def handle_group_command(bot, message, db):
             except Exception as e:
                 notify_dev(bot, e, "/srlist", message)
 
-        elif text == "/clear":
+        elif text in ["/clear" , "/clean"]:
             try:
                 delete_tracked_messages(bot, message.chat.id)
             except Exception as e:
