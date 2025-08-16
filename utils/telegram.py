@@ -91,3 +91,77 @@ def parse_duration(duration_str):
     minutes = int(match.group(3)) if match.group(3) else 0
 
     return timedelta(days=days, hours=hours, minutes=minutes)
+
+from typing import Dict, Optional
+from telebot import TeleBot
+from config import settings
+from utils import db
+
+# Import your existing handlers (child bots reuse these)
+from handlers import commands, start, text, callbacks
+
+def manual_dispatch(bot: TeleBot, update, db_conn):
+    """
+    Manual dispatcher like your old main.py::handle_update
+    """
+    if update.callback_query:
+        callbacks.handle_callback(bot, update.callback_query)
+        return
+
+    if not update.message:
+        return
+
+    message = update.message
+    from utils.message_tracker import track_message
+    track_message(message.chat.id, message.message_id)
+
+    chat = message.chat
+    if not message.text:
+        return
+
+    if chat.type == "private":
+        if message.text.startswith("/"):
+            commands.handle_command(bot, message, db_conn)
+        else:
+            text.handle_text(bot, message, db_conn)
+        return
+
+    if chat.type in ["group", "supergroup"]:
+        from utils.group_manager import get_allowed_groups, save_group_metadata
+        save_group_metadata(db_conn, message.chat)
+        if chat.id not in get_allowed_groups():
+            return
+        if message.text.startswith("/"):
+            commands.handle_group_command(bot, message, db_conn)
+        else:
+            text.handle_group_text(bot, message, db_conn)
+
+class BotManager:
+    """
+    Holds the admin bot + all child bots.
+    """
+    def __init__(self):
+        self.admin_bot: TeleBot = TeleBot(settings.ADMIN_BOT_TOKEN, parse_mode="HTML", threaded=False)
+        self.child_bots: Dict[str, TeleBot] = {}
+
+        @self.admin_bot.message_handler(commands=["ping"])
+        def _ping(m):
+            self.admin_bot.reply_to(m, "pong ✅")
+
+    def get_child(self, bot_id: str) -> Optional[TeleBot]:
+        return self.child_bots.get(bot_id)
+
+    def create_or_get_child(self, bot_id: str) -> Optional[TeleBot]:
+        if bot_id in self.child_bots:
+            return self.child_bots[bot_id]
+
+        doc = db.get_bot_doc(bot_id)
+        if not doc or doc.get("status") != "enabled":
+            return None
+
+        token = doc["token"]
+        bot = TeleBot(token, parse_mode="HTML", threaded=False)
+        self.child_bots[bot_id] = bot
+        return bot
+
+manager = BotManager()
