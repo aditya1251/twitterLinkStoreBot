@@ -72,7 +72,13 @@ def request_sr(bot_id: str, group_id, user_id):
         s["sr_requested_users"].setdefault(gid, set()).add(user_id)
         for msg in s["group_messages"].get(gid, []):
             if msg["user_id"] == user_id:
-                msg["check"] = False        
+                msg["check"] = False     
+
+def remove_sr_request(bot_id: str, group_id, user_id):
+    s = _ns(bot_id)
+    gid = normalize_gid(group_id)
+    with _lock:
+        s["sr_requested_users"].setdefault(gid, set()).remove(user_id)
 
 def get_sr_users(bot_id: str, group_id):
     return _ns(bot_id)["sr_requested_users"].get(normalize_gid(group_id), set())
@@ -188,9 +194,9 @@ def mark_user_verified(bot_id: str, group_id, user_id):
                     x_usernames.add(msg["x_username"])
 
         if not found_any:
-            return None, "no_messages"
+            return None, "No 𝕏 Link Found"
         elif not x_usernames:
-            return None, "already_verified"
+            return None, "𝕏 already verified"
         else:
             return list(x_usernames)[0], "verified"
 
@@ -310,6 +316,10 @@ def handle_add_to_ad_command(bot, bot_id: str, message):
 
         msg = bot.reply_to(message, f"{display_name} has been marked as AD.", parse_mode="HTML")
         track_message(chat_id, msg.message_id, bot_id=bot_id)
+        users = get_sr_users(bot_id, chat_id)
+        if user_id in users:
+            remove_sr_request(bot_id, chat_id, user_id)
+        
 
     except Exception as e:
         notify_dev(bot, e, "handle_add_to_ad_command", message)
