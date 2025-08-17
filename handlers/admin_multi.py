@@ -7,6 +7,7 @@ from bson.objectid import ObjectId
 from utils.telegram import manager
 import re
 from telebot.apihelper import ApiTelegramException
+from utils.db import ALL_MAIN_COMMANDS, get_bot_commands
 
 TOKEN_PATTERN = re.compile(r"^\d+:[A-Za-z0-9_-]+$")
 
@@ -74,7 +75,10 @@ def handle_admin_update(update: Update):
         return process_new_bot_token(message, token)
 
     if text.startswith("/start"):
-        show_main_menu(message.chat.id)
+        if message.from_user.id in settings.ADMIN_IDS:
+            show_main_menu(message.chat.id)
+        else:
+            manager.admin_bot.reply_to(message, "❌ Not authorized.")
 
 
 # === CALLBACK HANDLER ===
@@ -94,7 +98,8 @@ def handle_admin_callback(call: CallbackQuery):
             "⏸️ Disable Bot — Disable bot\n"
             "🗑️ Remove Bot — Delete bot\n"
         )
-        safe_edit(call.message.chat.id, call.message.message_id, help_text, back_btn())
+        safe_edit(call.message.chat.id, call.message.message_id,
+                  help_text, back_btn())
 
     elif cmd == "cmd_addbot":
         pending_add_token[call.from_user.id] = call.message.chat.id
@@ -131,16 +136,29 @@ def handle_admin_callback(call: CallbackQuery):
 
     elif cmd == "back_main":
         show_main_menu(call.message.chat.id, call.message.message_id)
+    elif cmd.startswith("commands:"):
+        _, bid, page = cmd.split(":")
+        show_bot_commands(call, bid, int(page))
+
+    elif cmd.startswith("togglecmd:"):
+        _, bid, command, page = cmd.split(":")
+        enabled = set(db.get_bot_commands(bid))
+        if command in enabled:
+            enabled.remove(command)
+        else:
+            enabled.add(command)
+        db.set_bot_commands(bid, list(enabled))
+        show_bot_commands(call, bid, int(page))
 
     else:
         manager.admin_bot.answer_callback_query(call.id, "❓ Unknown action.")
 
     manager.admin_bot.answer_callback_query(call.id)
 
+
 def escape_markdown(text: str) -> str:
     # Escape characters that Telegram MarkdownV2 treats specially
     return text.replace("_", "\\_").replace("*", "\\*").replace("[", "\\]").replace("`", "\\`")
-
 
 
 # === BOT LIST ===
@@ -160,9 +178,9 @@ def show_bot_list(chat_id, message_id, page=0):
     text = f"📋 *Child Bots Panel* (page {page+1}/{(total-1)//BOTS_PER_PAGE+1})\n\n"
 
     text += "\n".join(
-    f"🤖 @{escape_markdown(d.get('name') or 'Unnamed')} ({d.get('status', 'unknown')})"
-    for d in docs_page
-)
+        f"🤖 @{escape_markdown(d.get('name') or 'Unnamed')} ({d.get('status', 'unknown')})"
+        for d in docs_page
+    )
 
     kb = InlineKeyboardMarkup(row_width=1)
 
@@ -171,21 +189,29 @@ def show_bot_list(chat_id, message_id, page=0):
         status = d.get("status", "unknown")
         name = d.get("name") or "Unnamed"
 
-        kb.add(InlineKeyboardButton(f"🤖 {name} ({status})", callback_data=f"info:{bid}:{page}"))
+        kb.add(InlineKeyboardButton(
+            f"🤖 {name} ({status})", callback_data=f"info:{bid}:{page}"))
 
         row = []
         if status == "enabled":
-            row.append(InlineKeyboardButton("⏸️ Disable", callback_data=f"disable:{bid}:{page}"))
+            row.append(InlineKeyboardButton(
+                "⏸️ Disable", callback_data=f"disable:{bid}:{page}"))
         else:
-            row.append(InlineKeyboardButton("▶️ Enable", callback_data=f"enable:{bid}:{page}"))
-        row.append(InlineKeyboardButton("🗑️ Remove", callback_data=f"remove:{bid}:{page}"))
+            row.append(InlineKeyboardButton(
+                "▶️ Enable", callback_data=f"enable:{bid}:{page}"))
+        row.append(InlineKeyboardButton(
+            "🗑️ Remove", callback_data=f"remove:{bid}:{page}"))
+        row.append(InlineKeyboardButton("⚙️ Commands",
+                   callback_data=f"commands:{bid}:{page}"))
         kb.row(*row)
 
     nav_row = []
     if page > 0:
-        nav_row.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"page:{page-1}"))
+        nav_row.append(InlineKeyboardButton(
+            "⬅️ Prev", callback_data=f"page:{page-1}"))
     if end < total:
-        nav_row.append(InlineKeyboardButton("➡️ Next", callback_data=f"page:{page+1}"))
+        nav_row.append(InlineKeyboardButton(
+            "➡️ Next", callback_data=f"page:{page+1}"))
     if nav_row:
         kb.row(*nav_row)
 
@@ -208,7 +234,8 @@ def show_bot_info(call: CallbackQuery, bid: str, page: int):
         f"📡 Status: {d.get('status', 'unknown')}\n"
     )
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("⬅️ Back to list", callback_data=f"listpage:{page}"))
+    kb.add(InlineKeyboardButton("⬅️ Back to list",
+           callback_data=f"listpage:{page}"))
 
     safe_edit(call.message.chat.id, call.message.message_id, text, kb)
 
@@ -237,17 +264,21 @@ def process_new_bot_token(message: Message, token: str):
     bot_id = db.create_bot_doc(token)
     url = f"{settings.BASE_URL.rstrip('/')}/webhook/{bot_id}"
     ok = manager.set_child_webhook(bot_id, url)
+
     if ok:
+        # Save only main commands in DB (aliases will still work)
+        db.set_bot_commands(bot_id, ALL_MAIN_COMMANDS)
         manager.admin_bot.send_message(
             message.chat.id,
             f"✅ Bot added and webhook set!\n🆔 `{bot_id}`",
             parse_mode="Markdown",
         )
     else:
-        manager.admin_bot.send_message(message.chat.id, "❌ Failed to set webhook.")
+        manager.admin_bot.send_message(
+            message.chat.id, "❌ Failed to set webhook."
+        )
 
     show_main_menu(message.chat.id)
-
 
 # === ENABLE BOT ===
 def enable_bot(call: CallbackQuery, bid: str, page: int):
@@ -255,7 +286,8 @@ def enable_bot(call: CallbackQuery, bid: str, page: int):
         db.set_bot_status(bid, "enabled")
         url = f"{settings.BASE_URL.rstrip('/')}/webhook/{bid}"
         manager.set_child_webhook(bid, url)
-        manager.admin_bot.answer_callback_query(call.id, f"▶️ Bot {bid} enabled.")
+        manager.admin_bot.answer_callback_query(
+            call.id, f"▶️ Bot {bid} enabled.")
     except Exception:
         manager.admin_bot.answer_callback_query(call.id, "❌ Failed.")
     show_bot_list(call.message.chat.id, call.message.message_id, page)
@@ -266,7 +298,8 @@ def disable_bot(call: CallbackQuery, bid: str, page: int):
     try:
         db.set_bot_status(bid, "disabled")
         manager.delete_child_webhook(bid)
-        manager.admin_bot.answer_callback_query(call.id, f"⏸️ Bot {bid} disabled.")
+        manager.admin_bot.answer_callback_query(
+            call.id, f"⏸️ Bot {bid} disabled.")
     except Exception:
         manager.admin_bot.answer_callback_query(call.id, "❌ Failed.")
     show_bot_list(call.message.chat.id, call.message.message_id, page)
@@ -278,7 +311,8 @@ def remove_bot(call: CallbackQuery, bid: str, page: int):
         db.set_bot_webhook(bid, None)
         db.bots_collection().delete_one({"_id": ObjectId(bid)})
         manager.child_bots.pop(bid, None)
-        manager.admin_bot.answer_callback_query(call.id, f"🗑️ Bot {bid} removed.")
+        manager.admin_bot.answer_callback_query(
+            call.id, f"🗑️ Bot {bid} removed.")
     except Exception:
         manager.admin_bot.answer_callback_query(call.id, "❌ Failed.")
     show_bot_list(call.message.chat.id, call.message.message_id, page)
@@ -289,3 +323,28 @@ def back_btn():
     kb = InlineKeyboardMarkup()
     kb.add(InlineKeyboardButton("⬅️ Back", callback_data="back_main"))
     return kb
+
+
+def show_bot_commands(call: CallbackQuery, bid: str, page: int):
+    enabled = set(get_bot_commands(bid))
+
+    kb = InlineKeyboardMarkup(row_width=2)
+    buttons = []
+
+    for main_cmd in ALL_MAIN_COMMANDS:
+        status = "✅" if main_cmd in enabled else "❌"
+        buttons.append(
+            InlineKeyboardButton(
+                f"{status} {main_cmd}",
+                callback_data=f"togglecmd:{bid}:{main_cmd}:{page}"
+            )
+        )
+
+    # Add all command buttons (respects row_width)
+    kb.add(*buttons)
+
+    # Back button
+    kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
+
+    text = f"⚙️ *Command Settings for Bot {bid}*"
+    safe_edit(call.message.chat.id, call.message.message_id, text, kb)

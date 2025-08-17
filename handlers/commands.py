@@ -18,6 +18,7 @@ from utils.group_session import (
 from utils.message_tracker import track_message, delete_tracked_messages
 from datetime import timedelta
 from telebot.types import ChatPermissions
+from utils.db import is_command_enabled
 
 
 def handle_command(bot, bot_id: str, message, db):
@@ -107,7 +108,10 @@ def handle_group_command(bot, bot_id: str, message, db):
 
     if "@" in text:
         text = text.split("@")[0]
-
+    
+    if not is_command_enabled(bot_id, text):
+        return
+    
     try:
         if text in ["/start", "/starts"]:
             try:
@@ -326,6 +330,11 @@ def handle_group_command(bot, bot_id: str, message, db):
 
         elif text in ["/clear", "/clean"]:
             try:
+
+                if not is_user_admin(bot, message.chat.id, message.from_user.id):
+                    msg = bot.reply_to(message, "❌ Only admins can use this command.")
+                    track_message(message.chat.id, msg.message_id, bot_id=bot_id)
+                    return
                 delete_tracked_messages(bot, message.chat.id, bot_id=bot_id)
             except Exception as e:
                 notify_dev(bot, e, "/clear", message)

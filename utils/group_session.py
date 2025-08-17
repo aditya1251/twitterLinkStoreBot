@@ -3,7 +3,7 @@ from telebot.types import Message, ChatPermissions
 from utils.message_tracker import track_message
 from handlers.admin import notify_dev
 from config import settings
-
+from utils.telegram import is_user_admin
 
 ADMIN_IDS = settings.ADMIN_IDS
 # === Per-bot in-memory state ===
@@ -290,6 +290,11 @@ def handle_add_to_ad_command(bot, bot_id: str, message):
     try:
         chat_id = normalize_gid(message.chat.id)
 
+        if not is_user_admin(bot, chat_id, message.from_user.id):
+            msg = bot.reply_to(message, "❌ Only admins can use this command.")
+            track_message(chat_id, msg.message_id, bot_id=bot_id)
+            return
+
         reply_to_message = message.reply_to_message
         if not reply_to_message:
             msg = bot.reply_to(message, "↩️ Please reply to the user's message to get their links.")
@@ -314,10 +319,10 @@ def handle_link_command(bot, bot_id: str, message: Message):
         chat_id = normalize_gid(message.chat.id)
         from_id = message.from_user.id
 
-        if from_id not in ADMIN_IDS:
+        if not is_user_admin(bot, chat_id, from_id):
             msg = bot.reply_to(message, "❌ Only admins can use this command.")
             track_message(chat_id, msg.message_id, bot_id=bot_id)
-            return
+            return False
 
         if not message.reply_to_message:
             msg = bot.reply_to(message, "↩️ Please reply to the user's message to get their links.")
@@ -349,9 +354,8 @@ def handle_link_command(bot, bot_id: str, message: Message):
 def handle_sr_command(bot, bot_id: str, message: Message):
     try:
         chat_id = normalize_gid(message.chat.id)
-        from_id = message.from_user.id
 
-        if from_id not in ADMIN_IDS:
+        if not is_user_admin(bot, chat_id, message.from_user.id):
             msg = bot.reply_to(message, "❌ Only admins can use this command.")
             track_message(chat_id, msg.message_id, bot_id=bot_id)
             return
@@ -379,7 +383,7 @@ def handle_srlist_command(bot, bot_id: str, message: Message):
     try:
         chat_id = normalize_gid(message.chat.id)
 
-        if message.from_user.id not in ADMIN_IDS:
+        if not is_user_admin(bot, chat_id, message.from_user.id):
             msg = bot.reply_to(message, "❌ Only admins can use this command.")
             track_message(chat_id, msg.message_id, bot_id=bot_id)
             return

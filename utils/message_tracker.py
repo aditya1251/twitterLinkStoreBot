@@ -29,7 +29,9 @@ def delete_tracked_messages(bot, chat_id: int, bot_id: str = "default"):
     """
     Delete all tracked messages in a chat for this bot_id.
     Handles rate limits gracefully.
+
     """
+
     chat_key = str(chat_id)
     tracked = messages_by_chat[bot_id].get(chat_key, [])
 
