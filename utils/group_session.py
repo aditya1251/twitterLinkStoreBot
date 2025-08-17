@@ -2,8 +2,10 @@ from threading import Lock
 from telebot.types import Message, ChatPermissions
 from utils.message_tracker import track_message
 from handlers.admin import notify_dev
-from config import ADMIN_IDS
+from config import settings
 
+
+ADMIN_IDS = settings.ADMIN_IDS
 # === Per-bot in-memory state ===
 _sessions = {}
 _lock = Lock()

@@ -3,7 +3,7 @@ from pymongo import MongoClient, ReturnDocument
 import os
 from bson import ObjectId
 from config import settings
-
+from telebot import TeleBot
 _client = None
 _db = None
 
@@ -14,12 +14,18 @@ def init_db():
         if not uri:
             raise Exception("MONGODB_URI is missing.")
         _client = MongoClient(uri, serverSelectionTimeoutMS=5000)
-        _db = _client.get_database()
+        _db = _client[settings.MONGO_DB]
     return _db
+
 
 # === New multi-bot stuff ===
 def create_bot_doc(token: str, name: str = "", description: str = "", status: str = "enabled") -> str:
     db = init_db()
+
+    # use telebot to get the bot name 
+    bot = TeleBot(token)
+    name = bot.get_me().username
+    
     res = db["bots"].insert_one({
         "token": token.strip(),
         "name": name.strip(),
@@ -28,6 +34,30 @@ def create_bot_doc(token: str, name: str = "", description: str = "", status: st
         "webhook_url": None,
     })
     return str(res.inserted_id)
+
+def get_bot_by_token(token: str):
+    db = init_db()
+    return db["bots"].find_one({"token": token.strip()})
+
+def get_bot_by_id(bot_id: str):
+    db = init_db()
+    return db["bots"].find_one({"_id": ObjectId(bot_id)})
+
+def bots_collection():
+    db = init_db()
+    return db["bots"]
+
+def set_bot_webhook(bot_id: str, url: str | None):
+    """
+    Update a bot's webhook URL in the database.
+    """
+    db = init_db()
+    return db["bots"].find_one_and_update(
+        {"_id": ObjectId(bot_id)},
+        {"$set": {"webhook_url": url}},
+        return_document=ReturnDocument.AFTER
+    )
+
 
 def get_bot_doc(bot_id: str):
     db = init_db()

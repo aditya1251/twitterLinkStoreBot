@@ -99,21 +99,19 @@ from utils import db
 
 # Import your existing handlers (child bots reuse these)
 from handlers import commands, start, text, callbacks
+from utils.message_tracker import track_message
+from utils.group_manager import get_allowed_groups, save_group_metadata
 
-def manual_dispatch(bot: TeleBot, update, db_conn):
-    """
-    Manual dispatcher like your old main.py::handle_update
-    """
+def manual_dispatch(bot, bot_id: str, update, db_conn):
     if update.callback_query:
-        callbacks.handle_callback(bot, update.callback_query)
+        callbacks.handle_callback(bot, bot_id, update.callback_query)
         return
 
     if not update.message:
         return
 
     message = update.message
-    from utils.message_tracker import track_message
-    track_message(message.chat.id, message.message_id)
+    track_message(message.chat.id, message.message_id, bot_id=bot_id)
 
     chat = message.chat
     if not message.text:
@@ -121,20 +119,25 @@ def manual_dispatch(bot: TeleBot, update, db_conn):
 
     if chat.type == "private":
         if message.text.startswith("/"):
-            commands.handle_command(bot, message, db_conn)
+            commands.handle_command(bot, bot_id, message, db_conn)
         else:
-            text.handle_text(bot, message, db_conn)
+            text.handle_text(bot, bot_id, message, db_conn)
         return
 
     if chat.type in ["group", "supergroup"]:
-        from utils.group_manager import get_allowed_groups, save_group_metadata
-        save_group_metadata(db_conn, message.chat)
-        if chat.id not in get_allowed_groups():
+        # ✅ Pass bot_id into group metadata & allowed groups
+        save_group_metadata(db_conn, bot_id, message.chat)
+        if chat.id not in get_allowed_groups(bot_id):
             return
         if message.text.startswith("/"):
-            commands.handle_group_command(bot, message, db_conn)
+            commands.handle_group_command(bot, bot_id, message, db_conn)
         else:
-            text.handle_group_text(bot, message, db_conn)
+            text.handle_group_text(bot, bot_id, message, db_conn)
+
+from telebot import TeleBot
+from typing import Dict, Optional
+from utils import db
+from config import settings
 
 class BotManager:
     """
@@ -164,4 +167,31 @@ class BotManager:
         self.child_bots[bot_id] = bot
         return bot
 
+    # === New methods for manual dispatch ===
+    def set_child_webhook(self, bot_id: str, url: str) -> bool:
+        """Set webhook for a child bot and store it in DB"""
+        bot = self.create_or_get_child(bot_id)
+        if not bot:
+            return False
+        try:
+            bot.remove_webhook()
+            bot.set_webhook(url)
+            db.set_bot_webhook(bot_id, url)
+            return True
+        except Exception as e:
+            print(f"Failed to set webhook for bot {bot_id}: {e}")
+            return False
+
+    def delete_child_webhook(self, bot_id: str):
+        """Remove webhook for a child bot"""
+        bot = self.get_child(bot_id)
+        if bot:
+            try:
+                bot.remove_webhook()
+            except Exception:
+                pass
+        db.set_bot_webhook(bot_id, None)
+
+
+# Instantiate manager
 manager = BotManager()

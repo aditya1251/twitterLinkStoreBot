@@ -4,23 +4,21 @@ from utils.group_session import start_group_session, stop_group_session, get_gro
 from utils.message_tracker import track_message
 from handlers.admin import notify_dev
 
-def handle_start_group(bot, message: Message):
+
+def handle_start_group(bot, bot_id: str, message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
 
     try:
         if is_user_admin(bot, chat_id, user_id):
-            already_started = get_group_phase(chat_id)
+            already_started = get_group_phase(bot_id, chat_id)
             if already_started:
-                try:
-                    msg = bot.send_message(chat_id, "Group already started!")
-                    track_message(chat_id, msg.message_id)
-                except Exception as e:
-                    notify_dev(bot, e, "start_group: already started msg", message)
+                msg = bot.send_message(chat_id, "Group already started!")
+                track_message(chat_id, msg.message_id, bot_id=bot_id)
                 return
 
             # ✅ Start session
-            start_group_session(chat_id)
+            start_group_session(bot_id, chat_id)
 
             # ✅ Set group permissions
             try:
@@ -35,40 +33,37 @@ def handle_start_group(bot, message: Message):
             except Exception as e:
                 notify_dev(bot, e, "start_group: set permissions", message)
 
-            # ✅ Send start video
+            # ✅ Start video
             try:
                 msg = bot.send_video(chat_id, open("gifs/start.mp4", "rb"))
-                track_message(chat_id, msg.message_id)
+                track_message(chat_id, msg.message_id, bot_id=bot_id)
             except Exception as e:
                 notify_dev(bot, e, "start_group: send start.mp4", message)
 
             try:
                 msg = bot.send_message(chat_id, "🚀 Start dropping your links!")
-                track_message(chat_id, msg.message_id)
+                track_message(chat_id, msg.message_id, bot_id=bot_id)
             except Exception as e:
                 notify_dev(bot, e, "start_group: send start text", message)
 
         else:
-            try:
-                msg = bot.send_message(chat_id, "❌ Only group admins can start session.")
-                track_message(chat_id, msg.message_id)
-            except Exception as e:
-                notify_dev(bot, e, "start_group: non-admin warning", message)
+            msg = bot.send_message(chat_id, "❌ Only group admins can start session.")
+            track_message(chat_id, msg.message_id, bot_id=bot_id)
 
     except Exception as e:
         notify_dev(bot, e, "handle_start_group outer", message)
 
 
-def handle_cancel_group(bot, message: Message, db):
+def handle_cancel_group(bot, bot_id: str, message: Message, db):
     chat_id = message.chat.id
     user_id = message.from_user.id
 
     try:
         if is_user_admin(bot, chat_id, user_id):
             try:
-                data = stop_group_session(chat_id)
+                data = stop_group_session(bot_id, chat_id)
                 db["LinksData"].update_one(
-                    {"chat_id": chat_id},
+                    {"chat_id": chat_id, "bot_id": bot_id},
                     {"$push": {"data": data}},
                     upsert=True
                 )
@@ -91,40 +86,36 @@ def handle_cancel_group(bot, message: Message, db):
             # ✅ Close video
             try:
                 msg = bot.send_video(chat_id, open("gifs/close.mp4", "rb"))
-                track_message(chat_id, msg.message_id)
+                track_message(chat_id, msg.message_id, bot_id=bot_id)
             except Exception as e:
                 notify_dev(bot, e, "cancel_group: send close.mp4", message)
 
             try:
                 msg = bot.send_message(chat_id, "Tracking has been stopped. All data cleared.")
-                track_message(chat_id, msg.message_id)
+                track_message(chat_id, msg.message_id, bot_id=bot_id)
             except Exception as e:
                 notify_dev(bot, e, "cancel_group: send final text", message)
 
         else:
-            try:
-                msg = bot.send_message(chat_id, "❌ Only group admins can stop session.")
-                track_message(chat_id, msg.message_id)
-            except Exception as e:
-                notify_dev(bot, e, "cancel_group: non-admin warning", message)
+            msg = bot.send_message(chat_id, "❌ Only group admins can stop session.")
+            track_message(chat_id, msg.message_id, bot_id=bot_id)
 
     except Exception as e:
         notify_dev(bot, e, "handle_cancel_group outer", message)
 
 
-def handle_start(bot, message):
+def handle_start(bot, bot_id: str, message: Message):
     chat_id = message.chat.id
-
     try:
         welcome_text = (
             "👋 *Welcome!*\n\n"
-            "I'm your Telegram group management bot designed to help manage link sharing and keep your groups safe.\n\n"
-            "✅ I encrypt and track shared Twitter/X links\n"
-            "✅ Help prevent account flags \n"
+            "I'm your Telegram group management bot.\n\n"
+            "✅ Track and encrypt shared Twitter/X links\n"
+            "✅ Prevent account flags \n"
             "✅ Mute or warn users who don’t follow rules\n\n"
             "Type /help to see what I can do!"
         )
         msg = bot.send_message(chat_id, welcome_text, parse_mode="Markdown")
-        track_message(chat_id, msg.message_id)
+        track_message(chat_id, msg.message_id, bot_id=bot_id)
     except Exception as e:
         notify_dev(bot, e, "handle_start", message)
