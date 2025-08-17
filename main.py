@@ -49,7 +49,7 @@ def webhook_child(bot_id: str):
 
 
 # === Health Check ===
-@app.get("/health")
+@app.get("/")
 def health():
     return {"ok": True}, 200
 
@@ -62,8 +62,5 @@ def list_bots():
         d["_id"] = str(d["_id"])
         d.pop("token", None)  # don’t leak tokens in API
     return {"bots": docs}, 200
+    
 
-
-if __name__ == "__main__":
-    # ⚡ Run on local dev
-    app.run(host="127.0.0.1", port=5000, debug=True)
