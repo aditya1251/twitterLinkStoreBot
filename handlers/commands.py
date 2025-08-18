@@ -109,9 +109,6 @@ def handle_group_command(bot, bot_id: str, message, db):
     if "@" in text:
         text = text.split("@")[0]
     
-    if not is_command_enabled(bot_id, text):
-        return
-    
     try:
         if text in ["/start", "/starts"]:
             try:
@@ -341,3 +338,4 @@ def handle_group_command(bot, bot_id: str, message, db):
 
     except Exception as e:
         notify_dev(bot, e, "handle_group_command", message)
+
