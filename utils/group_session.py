@@ -91,6 +91,8 @@ def store_group_message(bot, bot_id: str, message: Message, group_id, user_id, u
             s["group_messages"][gid] = []
             s["unique_x_usernames"][gid] = set()
 
+        print(f"Storing message from {user_id} in group {gid} with link {link}")
+
         # only process x.com links
         if not link.startswith("https://x.com"):
             return
