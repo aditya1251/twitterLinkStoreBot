@@ -22,7 +22,7 @@ def handle_text(bot, bot_id: str, message: Message, db):
                     msg = bot.send_message(chat_id, f"✅ Group `{group_id}` added.", parse_mode="Markdown")
                     track_message(chat_id, msg.message_id, bot_id=bot_id)
                 elif action == "remove":
-                    remove_group(db, bot_id, group_id)
+                    remove_group(bot_id, group_id)
                     msg = bot.send_message(chat_id, f"🗑️ Group `{group_id}` removed.", parse_mode="Markdown")
                     track_message(chat_id, msg.message_id, bot_id=bot_id)
             except ValueError:

@@ -6,15 +6,13 @@ from utils.group_session import (
     get_users_with_multiple_links,
     get_unverified_users,
     get_unverified_users_full,
-    handle_link_command,
-    handle_sr_command,
-    handle_srlist_command,
     set_verification_phase,
     get_all_links_count,
     handle_close_group,
-    handle_add_to_ad_command,
     get_formatted_user_link_list
 )
+from handlers.ad_manager import handle_add_to_ad_command, handle_link_command
+from handlers.sr_handlers import handle_sr_command, handle_srlist_command
 from utils.message_tracker import track_message, delete_tracked_messages
 from datetime import timedelta
 from telebot.types import ChatPermissions
