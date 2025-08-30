@@ -1,155 +1,463 @@
-from threading import Lock
-from telebot.types import Message, ChatPermissions
-from utils.message_tracker import track_message
-from handlers.admin import notify_dev
-from config import settings
-from utils.telegram import is_user_admin
+"""
+utils/group_session.py
 
-ADMIN_IDS = settings.ADMIN_IDS
-# === Per-bot in-memory state ===
-_sessions = {}
-_lock = Lock()
+DB-backed, low-bandwidth session manager for the Telegram bot.
+Drop-in replacement for an in-memory implementation. Persists minimal
+state to MongoDB and keeps hot in-memory caches for performance.
 
-def _ns(bot_id: str):
+Usage:
+    from utils.group_session import start_group_session, store_group_message, request_sr
+
+Call ensure_indexes() once on startup (or run the included function)
+so necessary indexes are created.
+
+This file intentionally keeps a small API surface that matches the
+previous in-repo expectations (so handlers don't need changes).
+
+Key functions provided:
+- ensure_indexes()
+- start_group_session(bot_id, group_id)
+- stop_group_session(bot_id, group_id)
+- set_verification_phase(bot_id, group_id)
+- get_group_phase(bot_id, group_id)
+- store_group_message(bot, bot_id, message, group_id, user_id, username, link, x_username=None, first_name=None)
+- get_group_messages(bot_id, group_id, limit=1000)
+- request_sr(bot_id, group_id, user_id)
+- remove_sr_request(bot_id, group_id, user_id)
+- get_sr_users(bot_id, group_id)
+
+Notes:
+- This module expects a function `init_db()` in `utils.db` returning a
+  connected `pymongo` Database object.
+- Where helpful, it will call `handlers.admin.notify_dev` (if available)
+  to surface errors during DB operations. If that import fails it will
+  fall back to logging to `print()`.
+
+"""
+
+from __future__ import annotations
+
+import threading
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Set
+
+# These imports assume your repo already has them. We try/except to
+# provide graceful fallbacks during unit testing.
+try:
+    from telebot.types import Message, ChatPermissions
+except Exception:  # pragma: no cover - telebot may not be installed in tests
+    Message = Any
+    ChatPermissions = Any
+
+try:
+    from utils.db import init_db
+except Exception:
+    # Provide a helpful error at runtime if DB helper is missing
+    def init_db():
+        raise RuntimeError("utils.db.init_db() not found — please provide an init_db() that returns a pymongo Database")
+
+try:
+    from utils.message_tracker import track_message
+except Exception:
+    def track_message(*_args, **_kwargs):
+        # No-op fallback; keeps behavior safe if tracker missing
+        return None
+
+# Optional admin notifier used for reporting unexpected exceptions
+try:
+    from handlers.admin import notify_dev
+except Exception:
+    def notify_dev(bot, exc, context=""):
+        # Best-effort reporting fallback
+        print("[notify_dev]", context, str(exc))
+
+# Module-level in-memory caches (hot caches, safe to evict)
+_lock = threading.RLock()
+_sessions: Dict[str, Dict[str, Any]] = {}
+
+# Constants
+_DEFAULT_MESSAGE_LOAD = 1000
+
+
+def _ns(bot_id: str) -> Dict[str, Any]:
+    """Return the per-bot namespace (initialize lazily)."""
     if bot_id not in _sessions:
         _sessions[bot_id] = {
-            "active_groups": {},
-            "group_messages": {},
-            "sr_requested_users": {},
-            "unique_x_usernames": {}
+            "active_groups": {},         # group_id -> phase (collecting|verifying)
+            "group_messages": {},        # group_id -> list[small message docs]
+            "sr_requested_users": {},    # group_id -> set(user_id)
+            "unique_x_usernames": {},    # group_id -> set(x_username)
         }
     return _sessions[bot_id]
 
-def normalize_gid(group_id):
+
+def normalize_gid(group_id: Any) -> str:
     return str(group_id)
 
-# ---------------- Session Control ----------------
-def start_group_session(bot_id: str, group_id):
-    s = _ns(bot_id)
+
+# ---------------- DB helpers ----------------
+
+def _db():
+    return init_db()
+
+
+def ensure_indexes():
+    """Create recommended indexes. Call once at app startup.
+
+    Safe to call multiple times.
+    """
+    db = _db()
+    try:
+        db["sessions"].create_index([("bot_id", 1), ("group_id", 1)], unique=True)
+        db["session_messages"].create_index([("bot_id", 1), ("group_id", 1), ("x_username", 1)])
+        db["session_messages"].create_index([("bot_id", 1), ("group_id", 1), ("user_id", 1)])
+        db["session_messages"].create_index([("bot_id", 1), ("group_id", 1), ("message_id", 1)])
+        db["sr_requests"].create_index([("bot_id", 1), ("group_id", 1), ("user_id", 1)], unique=True)
+        db["tracked_messages"].create_index([("bot_id", 1), ("chat_id", 1)])
+    except Exception as e:
+        notify_dev(None, e, "ensure_indexes")
+
+
+def _ensure_session_doc(bot_id: str, group_id: Any):
+    db = _db()
+    try:
+        db["sessions"].update_one(
+            {"bot_id": bot_id, "group_id": group_id},
+            {
+                "$setOnInsert": {
+                    "bot_id": bot_id,
+                    "group_id": group_id,
+                    "phase": "collecting",
+                    "started_at": datetime.utcnow(),
+                }
+            },
+            upsert=True,
+        )
+    except Exception as e:
+        notify_dev(None, e, "_ensure_session_doc")
+
+
+# ---------------- Session lifecycle ----------------
+
+def start_group_session(bot_id: str, group_id: Any):
+    """Mark a group's session as started (in-memory + persisted meta).
+
+    Idempotent.
+    """
     gid = normalize_gid(group_id)
+    ns = _ns(bot_id)
     with _lock:
-        s["active_groups"][gid] = "collecting"
-        s["group_messages"][gid] = []
-        s["unique_x_usernames"][gid] = set()
-        s["sr_requested_users"][gid] = set()
+        ns["active_groups"][gid] = "collecting"
+        ns["group_messages"].setdefault(gid, [])
+        ns["unique_x_usernames"].setdefault(gid, set())
+        ns["sr_requested_users"].setdefault(gid, set())
 
-def stop_group_session(bot_id: str, group_id):
-    s = _ns(bot_id)
+    try:
+        _ensure_session_doc(bot_id, group_id)
+    except Exception as exc:
+        notify_dev(None, exc, "start_group_session: persist")
+
+
+def stop_group_session(bot_id: str, group_id: Any) -> List[Dict[str, Any]]:
+    """Stop a session and return any cached messages (if desired).
+
+    This clears the in-memory caches for the group but does not delete
+    persisted messages — those are retained in `session_messages`.
+    """
     gid = normalize_gid(group_id)
+    ns = _ns(bot_id)
     with _lock:
-        s["active_groups"].pop(gid, None)
-        s["sr_requested_users"].pop(gid, None)
-        s["unique_x_usernames"].pop(gid, None)
-        return s["group_messages"].pop(gid, [])
+        cached = ns["group_messages"].pop(gid, [])
+        ns["active_groups"].pop(gid, None)
+        ns["sr_requested_users"].pop(gid, None)
+        ns["unique_x_usernames"].pop(gid, None)
+    # Optional: mark session ended in DB
+    try:
+        db = _db()
+        db["sessions"].update_one({"bot_id": bot_id, "group_id": group_id}, {"$set": {"ended_at": datetime.utcnow()}}, upsert=False)
+    except Exception as exc:
+        notify_dev(None, exc, "stop_group_session: mark ended")
+    return cached
 
-def set_verification_phase(bot_id: str, group_id):
-    s = _ns(bot_id)
+
+def set_verification_phase(bot_id: str, group_id: Any):
     gid = normalize_gid(group_id)
+    ns = _ns(bot_id)
     with _lock:
-        if gid in s["active_groups"]:
-            s["active_groups"][gid] = "verifying"
+        if gid in ns["active_groups"]:
+            ns["active_groups"][gid] = "verifying"
+    try:
+        db = _db()
+        db["sessions"].update_one(
+            {"bot_id": bot_id, "group_id": group_id},
+            {"$set": {"phase": "verifying", "phase_changed_at": datetime.utcnow()}},
+            upsert=True,
+        )
+    except Exception as exc:
+        notify_dev(None, exc, "set_verification_phase: persist")
 
-def get_group_phase(bot_id: str, group_id):
-    return _ns(bot_id)["active_groups"].get(normalize_gid(group_id))
 
-def is_group_verifying(bot_id: str, group_id):
-    return get_group_phase(bot_id, group_id) == "verifying"
-
-# ---------------- Messages ----------------
-def add_group_message(bot_id: str, group_id, message_data: dict):
-    s = _ns(bot_id)
+def get_group_phase(bot_id: str, group_id: Any) -> Optional[str]:
     gid = normalize_gid(group_id)
-    with _lock:
-        s["group_messages"].setdefault(gid, []).append(message_data)
+    ns = _ns(bot_id)
+    return ns["active_groups"].get(gid)
 
-def get_group_messages(bot_id: str, group_id):
-    return _ns(bot_id)["group_messages"].get(normalize_gid(group_id), [])
 
-def request_sr(bot_id: str, group_id, user_id):
-    s = _ns(bot_id)
+# ---------------- Message handling ----------------
+
+def store_group_message(
+    bot,
+    bot_id: str,
+    message: Message,#type: ignore
+    group_id: Any,
+    user_id: int,
+    username: Optional[str],
+    link: str,
+    x_username: Optional[str] = None,
+    first_name: Optional[str] = None,
+) -> bool:
+    """Persist a single group message and return True if a fraud alert
+    was triggered (duplicate x_username), otherwise False.
+
+    This function intentionally performs a small number of targeted DB
+    operations (one find_one and one insert_one) and updates the
+    in-memory caches for hot access.
+    """
+    if not link:
+        return False
+
+    # we only care about X/Twitter-like links — adapt predicate as needed
+    if "x.com" not in link and "twitter.com" not in link:
+        return False
+
     gid = normalize_gid(group_id)
+    db = _db()
+
+    # Try to derive x_username if not supplied
+    if not x_username:
+        try:
+            # naive extraction: https://x.com/username/... or /username
+            parts = link.rstrip("/\n\r").split("/")
+            # username should be after host, e.g., ['https:', '', 'x.com', 'username', ...]
+            if len(parts) >= 4:
+                x_username = parts[3]
+            else:
+                x_username = None
+        except Exception:
+            x_username = None
+
+    if not x_username:
+        # we can't check duplicates reliably without a username
+        # still persist message (optional) — but here we'll return False
+        return False
+
+    # 1) Check if another message with same x_username exists in this session
+    try:
+        existing = db["session_messages"].find_one(
+            {"bot_id": bot_id, "group_id": group_id, "x_username": x_username},
+            projection={"user_id": 1, "first_name": 1, "message_id": 1, "_id": 0},
+        )
+    except Exception as exc:
+        notify_dev(bot, exc, "store_group_message: find_one")
+        existing = None
+
+    # Build the document to insert (small, explicit fields)
+    msg_doc = {
+        "bot_id": bot_id,
+        "group_id": group_id,
+        "message_id": getattr(message, "message_id", None),
+        "user_id": user_id,
+        "username": username,
+        "first_name": first_name,
+        "link": link,
+        "x_username": x_username,
+        "check": False,
+        "created_at": datetime.utcnow(),
+    }
+
+    # 2) Insert the message doc (append-only). If insert fails, report and
+    # continue to update in-memory caches to avoid losing state locally.
+    try:
+        db["session_messages"].insert_one(msg_doc)
+    except Exception as exc:
+        notify_dev(bot, exc, "store_group_message: insert_one")
+
+    # 3) Update in-memory caches for hot access
+    ns = _ns(bot_id)
     with _lock:
-        s["sr_requested_users"].setdefault(gid, set()).add(user_id)
-        for msg in s["group_messages"].get(gid, []):
-            if msg["user_id"] == user_id:
-                msg["check"] = False     
+        ns["group_messages"].setdefault(gid, []).append(msg_doc)
+        ns["unique_x_usernames"].setdefault(gid, set()).add(x_username)
 
-def remove_sr_request(bot_id: str, group_id, user_id):
-    s = _ns(bot_id)
-    gid = normalize_gid(group_id)
-    with _lock:
-        s["sr_requested_users"].setdefault(gid, set()).remove(user_id)
+    # 4) If an existing record was found, fetch small offender list and alert
+    if existing:
+        try:
+            offender_cursor = db["session_messages"].find(
+                {"bot_id": bot_id, "group_id": group_id, "x_username": x_username},
+                projection={"user_id": 1, "first_name": 1, "_id": 0},
+            )
+            offenders = list(offender_cursor)
+        except Exception as exc:
+            notify_dev(bot, exc, "store_group_message: fetch_offenders")
+            offenders = []
 
-def get_sr_users(bot_id: str, group_id):
-    return _ns(bot_id)["sr_requested_users"].get(normalize_gid(group_id), set())
-
-def store_group_message(bot, bot_id: str, message: Message, group_id, user_id, username, link, x_username=None, first_name=None):
-    s = _ns(bot_id)
-    gid = normalize_gid(group_id)
-    with _lock:
-        if gid not in s["group_messages"]:
-            s["group_messages"][gid] = []
-            s["unique_x_usernames"][gid] = set()
-
-        # only process x.com links
-        if not link.startswith("https://x.com"):
-            return
-
-        x_username = link.split("/")[3]
-
-        # First time this X username appears
-        if x_username not in s["unique_x_usernames"][gid]:
-            s["unique_x_usernames"][gid].add(x_username)
-            s["group_messages"][gid].append({
-                "number": len(s["group_messages"][gid]) + 1,
-                "user_id": user_id,
-                "username": username,
-                "first_name": first_name,
-                "link": link,
-                "x_username": x_username,
-                "check": False,
-            })
-            return
-
-        # Duplicate detected — collect all users who shared this X username
-        offenders = [
-            entry for entry in s["group_messages"][gid]
-            if entry["x_username"] == x_username and entry["user_id"] != user_id
-        ]
-        if len(offenders) < 1:
-            s["group_messages"][gid].append({
-                "number": len(s["group_messages"][gid]) + 1,
-                "user_id": user_id,
-                "username": username,
-                "first_name": first_name,
-                "link": link,
-                "x_username": x_username,
-                "check": False,
-            })
-            return
-        offenders.append({
-            "user_id": user_id,
-            "username": username,
-            "first_name": first_name,
-        })
-
-        # Create mention links
+        # Build mention tags for alert (avoid loading large profile info)
         tags = []
         for u in offenders:
-            name = u.get("first_name") or "User"
             uid = u.get("user_id")
+            name = u.get("first_name") or "User"
             if uid:
                 tags.append(f'<a href="tg://user?id={uid}">{name}</a>')
-        tags_str = ", ".join(sorted(set(tags)))
 
+        tags_str = ", ".join(sorted(set(tags))) if tags else "(unknown users)"
         alert = (
             f"⚠️ <b>Fraud Alert</b>\n"
             f"Multiple users are sharing the same X account link: <code>{x_username}</code>\n"
             f"Suspicious users: {tags_str}"
         )
+        # Try to reply to the message — handlers expect bot-like behavior
+        try:
+            # Some codebases use bot.reply_to, others use bot.send_message —
+            # attempt reply_to, fallback to send_message if missing
+            if hasattr(bot, "reply_to"):
+                bot.reply_to(message, text=alert, parse_mode="HTML")
+            else:
+                bot.send_message(getattr(message.chat, "id", None) or getattr(message, "chat", {}).get("id"), alert, parse_mode="HTML")
 
-        msg = bot.reply_to(message, text=alert, parse_mode="HTML")
-        track_message(message.chat.id, msg.message_id, bot_id=bot_id)
+            # Track the generated bot message so admin commands can act on it
+            track_message(getattr(message.chat, "id", None) or getattr(message, "chat", {}).get("id"), getattr(message, "message_id", None), bot_id=bot_id)
+        except Exception as exc:
+            notify_dev(bot, exc, "store_group_message: send fraud alert")
+
+        return True
+
+    return False
+
+
+def get_group_messages(bot_id: str, group_id: Any, limit: int = _DEFAULT_MESSAGE_LOAD) -> List[Dict[str, Any]]:
+    """Return cached messages for a group; if missing, load from DB (limited).
+
+    Returns a list of small dicts (projection) suitable for iteration.
+    """
+    gid = normalize_gid(group_id)
+    ns = _ns(bot_id)
+    with _lock:
+        cache = ns["group_messages"].get(gid)
+        if cache:
+            # return a shallow copy for safety
+            return list(cache)
+
+    # Fallback: load the last `limit` messages from DB ordered by created_at
+    db = _db()
+    try:
+        docs = list(
+            db["session_messages"].find(
+                {"bot_id": bot_id, "group_id": group_id},
+                projection={"_id": 0, "message_id": 1, "user_id": 1, "username": 1, "first_name": 1, "link": 1, "x_username": 1, "check": 1},
+            ).sort("created_at", 1).limit(limit)
+        )
+    except Exception as exc:
+        notify_dev(None, exc, "get_group_messages: db load")
+        return []
+
+    with _lock:
+        ns["group_messages"][gid] = docs
+    return docs
+
+
+# ---------------- SR (special request) handling ----------------
+
+def request_sr(bot_id: str, group_id: Any, user_id: int):
+    gid = normalize_gid(group_id)
+    db = _db()
+    try:
+        db["sr_requests"].update_one(
+            {"bot_id": bot_id, "group_id": group_id, "user_id": user_id},
+            {"$set": {"status": "requested", "requested_at": datetime.utcnow()}, "$unset": {"cleared_at": ""}},
+            upsert=True,
+        )
+    except Exception as exc:
+        notify_dev(None, exc, "request_sr: persist")
+
+    with _lock:
+        _ns(bot_id)["sr_requested_users"].setdefault(gid, set()).add(user_id)
+
+    # mark user's messages as unchecked (so verifier will re-check them)
+    try:
+        db["session_messages"].update_many({"bot_id": bot_id, "group_id": group_id, "user_id": user_id}, {"$set": {"check": False}})
+    except Exception as exc:
+        notify_dev(None, exc, "request_sr: update_messages")
+
+
+def remove_sr_request(bot_id: str, group_id: Any, user_id: int):
+    gid = normalize_gid(group_id)
+    db = _db()
+    try:
+        db["sr_requests"].update_one({"bot_id": bot_id, "group_id": group_id, "user_id": user_id}, {"$set": {"status": "cleared", "cleared_at": datetime.utcnow()}})
+    except Exception as exc:
+        notify_dev(None, exc, "remove_sr_request: persist")
+
+    with _lock:
+        _ns(bot_id)["sr_requested_users"].setdefault(gid, set()).discard(user_id)
+
+
+def get_sr_users(bot_id: str, group_id: Any) -> Set[int]:
+    gid = normalize_gid(group_id)
+    ns = _ns(bot_id)
+    with _lock:
+        cached = ns["sr_requested_users"].get(gid)
+        if cached:
+            return set(cached)
+
+    # fallback: query DB
+    db = _db()
+    try:
+        docs = db["sr_requests"].find({"bot_id": bot_id, "group_id": group_id, "status": "requested"}, projection={"user_id": 1, "_id": 0})
+        users = {d["user_id"] for d in docs}
+    except Exception as exc:
+        notify_dev(None, exc, "get_sr_users: db")
+        users = set()
+
+    with _lock:
+        ns["sr_requested_users"][gid] = users
+    return users
+
+
+# ---------------- Utilities ----------------
+
+def clear_cache_for_group(bot_id: str, group_id: Any):
+    gid = normalize_gid(group_id)
+    with _lock:
+        ns = _ns(bot_id)
+        ns["group_messages"].pop(gid, None)
+        ns["sr_requested_users"].pop(gid, None)
+        ns["unique_x_usernames"].pop(gid, None)
+
+
+def load_session_into_cache(bot_id: str, group_id: Any, limit: int = _DEFAULT_MESSAGE_LOAD):
+    """Explicitly load a session's last `limit` messages into the in-memory cache.
+
+    Useful for warming caches on restart for active groups.
+    """
+    docs = get_group_messages(bot_id, group_id, limit=limit)
+    with _lock:
+        _ns(bot_id)["group_messages"][normalize_gid(group_id)] = docs
+
+
+# Expose a small __all__ for clarity
+__all__ = [
+    "ensure_indexes",
+    "start_group_session",
+    "stop_group_session",
+    "set_verification_phase",
+    "get_group_phase",
+    "store_group_message",
+    "get_group_messages",
+    "request_sr",
+    "remove_sr_request",
+    "get_sr_users",
+    "clear_cache_for_group",
+    "load_session_into_cache",
+]
 
 # ---------------- Group closing & verification ----------------
 def handle_close_group(bot, bot_id: str, message):

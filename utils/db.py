@@ -14,8 +14,8 @@ COMMAND_GROUPS = {
     "/count": ["/count"],
     "/multi": ["/multi"],
     "/unsafe": ["/unsafe"],
-    "/verify": ["/verify", "/track", "/check"],   # aliases
-    "/close": ["/close", "/closes", "/stop"],     # aliases
+    "/verify": ["/verify", "/track", "/check"],
+    "/close": ["/close", "/closes", "/stop"],
     "/end": ["/end"],
     "/rule": ["/rule"],
     "/help": ["/help"],
