@@ -22,7 +22,8 @@ def webhook_admin():
 
         # 🚀 Use manual handler instead of process_new_updates
         handle_admin_update(update)
-
+        print("OK")
+        print(update)
     except Exception:
         traceback.print_exc()
         abort(400)
