@@ -374,7 +374,7 @@ def show_bot_rules(call: CallbackQuery, bid: str, page: int):
         rules = "📛 No rules set."
 
     text = f"📛 *Rules for Bot {bid}*\n\n{rules}"
-    manager.admin_bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
+    manager.admin_bot.send_message(call.message.chat.id, text)
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(InlineKeyboardButton("✅ New Rules", callback_data=f"newrules:{bid}:{page}"))
     kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
