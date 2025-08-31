@@ -89,83 +89,87 @@ def handle_admin_update(update: Update):
 
 # === CALLBACK HANDLER ===
 def handle_admin_callback(call: CallbackQuery):
-    if call.from_user.id != settings.ADMIN_TELEGRAM_USER_ID:
-        manager.admin_bot.answer_callback_query(call.id, "❌ Not authorized.")
-        return
 
-    cmd = call.data
+    try:
+        if call.from_user.id != settings.ADMIN_TELEGRAM_USER_ID:
+            manager.admin_bot.answer_callback_query(call.id, "❌ Not authorized.")
+            return
 
-    if cmd == "cmd_help":
-        help_text = (
-            "🤖 *Admin Bot Help*\n\n"
-            "➕ Add Bot — Register a new child bot\n"
-            "📋 List Bots — Show all child bots\n"
-            "▶️ Enable Bot — Enable bot & set webhook\n"
-            "⏸️ Disable Bot — Disable bot\n"
-            "🗑️ Remove Bot — Delete bot\n"
-        )
-        safe_edit(call.message.chat.id, call.message.message_id,
-                  help_text, back_btn())
+        cmd = call.data
 
-    elif cmd == "cmd_addbot":
-        pending_add_token[call.from_user.id] = call.message.chat.id
-        safe_edit(
-            call.message.chat.id,
-            call.message.message_id,
-            "➕ Please send me the *bot token* now:",
-            back_btn(),
-        )
+        if cmd == "cmd_help":
+            help_text = (
+                "🤖 *Admin Bot Help*\n\n"
+                "➕ Add Bot — Register a new child bot\n"
+                "📋 List Bots — Show all child bots\n"
+                "▶️ Enable Bot — Enable bot & set webhook\n"
+                "⏸️ Disable Bot — Disable bot\n"
+                "🗑️ Remove Bot — Delete bot\n"
+            )
+            safe_edit(call.message.chat.id, call.message.message_id,
+                    help_text, back_btn())
 
-    elif cmd.startswith("cmd_listbots:") or cmd.startswith("page:"):
-        page = int(cmd.split(":")[1])
-        show_bot_list(call.message.chat.id, call.message.message_id, page)
+        elif cmd == "cmd_addbot":
+            pending_add_token[call.from_user.id] = call.message.chat.id
+            safe_edit(
+                call.message.chat.id,
+                call.message.message_id,
+                "➕ Please send me the *bot token* now:",
+                back_btn(),
+            )
 
-    elif cmd.startswith("listpage:"):
-        _, page = cmd.split(":")
-        show_bot_list(call.message.chat.id, call.message.message_id, int(page))
+        elif cmd.startswith("cmd_listbots:") or cmd.startswith("page:"):
+            page = int(cmd.split(":")[1])
+            show_bot_list(call.message.chat.id, call.message.message_id, page)
 
-    elif cmd.startswith("info:"):
-        _, bid, page = cmd.split(":")
-        show_bot_info(call, bid, int(page))
+        elif cmd.startswith("listpage:"):
+            _, page = cmd.split(":")
+            show_bot_list(call.message.chat.id, call.message.message_id, int(page))
 
-    elif cmd.startswith("enable:"):
-        _, bid, page = cmd.split(":")
-        enable_bot(call, bid, int(page))
+        elif cmd.startswith("info:"):
+            _, bid, page = cmd.split(":")
+            show_bot_info(call, bid, int(page))
 
-    elif cmd.startswith("disable:"):
-        _, bid, page = cmd.split(":")
-        disable_bot(call, bid, int(page))
+        elif cmd.startswith("enable:"):
+            _, bid, page = cmd.split(":")
+            enable_bot(call, bid, int(page))
 
-    elif cmd.startswith("remove:"):
-        _, bid, page = cmd.split(":")
-        remove_bot(call, bid, int(page))
+        elif cmd.startswith("disable:"):
+            _, bid, page = cmd.split(":")
+            disable_bot(call, bid, int(page))
 
-    elif cmd == "back_main":
-        show_main_menu(call.message.chat.id, call.message.message_id)
-    elif cmd.startswith("commands:"):
-        _, bid, page = cmd.split(":")
-        show_bot_commands(call, bid, int(page))
+        elif cmd.startswith("remove:"):
+            _, bid, page = cmd.split(":")
+            remove_bot(call, bid, int(page))
 
-    elif cmd.startswith("togglecmd:"):
-        _, bid, command, page = cmd.split(":")
-        enabled = set(db.get_bot_commands(bid))
-        if command in enabled:
-            enabled.remove(command)
+        elif cmd == "back_main":
+            show_main_menu(call.message.chat.id, call.message.message_id)
+        elif cmd.startswith("commands:"):
+            _, bid, page = cmd.split(":")
+            show_bot_commands(call, bid, int(page))
+
+        elif cmd.startswith("togglecmd:"):
+            _, bid, command, page = cmd.split(":")
+            enabled = set(db.get_bot_commands(bid))
+            if command in enabled:
+                enabled.remove(command)
+            else:
+                enabled.add(command)
+            db.set_bot_commands(bid, list(enabled))
+            show_bot_commands(call, bid, int(page))
+        elif cmd.startswith("rules:"):
+            _, bid, page = cmd.split(":")
+            show_bot_rules(call, bid, int(page))
+        elif cmd.startswith("newrules:"):
+            _, bid, page = cmd.split(":")
+            set_bot_rules(call, bid, int(page))
+
         else:
-            enabled.add(command)
-        db.set_bot_commands(bid, list(enabled))
-        show_bot_commands(call, bid, int(page))
-    elif cmd.startswith("rules:"):
-        _, bid, page = cmd.split(":")
-        show_bot_rules(call, bid, int(page))
-    elif cmd.startswith("newrules:"):
-        _, bid, page = cmd.split(":")
-        set_bot_rules(call, bid, int(page))
+            manager.admin_bot.answer_callback_query(call.id, "❓ Unknown action.")
 
-    else:
-        manager.admin_bot.answer_callback_query(call.id, "❓ Unknown action.")
-
-    manager.admin_bot.answer_callback_query(call.id)
+        manager.admin_bot.answer_callback_query(call.id)
+    except Exception as e:
+        pass
 
 
 def escape_markdown(text: str) -> str:
@@ -370,10 +374,13 @@ def show_bot_rules(call: CallbackQuery, bid: str, page: int):
         rules = "📛 No rules set."
 
     text = f"📛 *Rules for Bot {bid}*\n\n{rules}"
+    manager.admin_bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(InlineKeyboardButton("✅ New Rules", callback_data=f"newrules:{bid}:{page}"))
     kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
-    safe_edit(call.message.chat.id, call.message.message_id, text, kb)
+
+    edit_text = "✅ Edit Rules"
+    safe_edit(call.message.chat.id, call.message.message_id, edit_text, kb)
 
 def set_bot_rules(call: CallbackQuery, bid: str, page: int):
 
