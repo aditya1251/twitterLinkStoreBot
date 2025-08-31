@@ -100,6 +100,14 @@ def set_bot_status(bot_id: str, status: str):
         return_document=ReturnDocument.AFTER
     )
 
+def set_bot_rules(bot_id: str, rules: str):
+    db = init_db()
+    return db["bots"].find_one_and_update(
+        {"_id": ObjectId(bot_id)},
+        {"$set": {"rules": rules}},
+        return_document=ReturnDocument.AFTER
+    )
+
 def get_bot_commands(bot_id: str):
     db = init_db()
     doc = db["settings"].find_one({"_id": f"commands:{bot_id}"})

@@ -20,7 +20,6 @@ from datetime import timedelta
 from telebot.types import ChatPermissions
 from utils.db import is_command_enabled
 
-
 def handle_command(bot, bot_id: str, message, db):
     chat_id = message.chat.id
     text = message.text.strip()
@@ -145,7 +144,8 @@ def handle_group_command(bot, bot_id: str, message, db):
 
         elif text == "/rule":
             try:
-                rules_text = (
+                bot_data = db.bots.find_one({"_id": bot_id})
+                rules_text = bot_data.get("rules") or (
                     "📛📛 <b>Likes Group Rules:</b>\n\n"
                     "💜 please follow these rules during each session:\n\n"
                     "1️⃣ <b>Link Drop Time</b>\n"

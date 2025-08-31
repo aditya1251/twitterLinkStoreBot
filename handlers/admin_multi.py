@@ -8,11 +8,13 @@ from utils.telegram import manager
 import re
 from telebot.apihelper import ApiTelegramException
 from utils.db import ALL_MAIN_COMMANDS, get_bot_commands
+from handlers.callbacks import pending_action
 
 TOKEN_PATTERN = re.compile(r"^\d+:[A-Za-z0-9_-]+$")
 
 # in-memory state for simple wizard flows
 pending_add_token = {}  # {admin_id: chat_id}
+pending_rules = {}  # {admin_id: chat_id}
 
 BOTS_PER_PAGE = 5  # how many bots per page
 
@@ -73,6 +75,10 @@ def handle_admin_update(update: Update):
         token = text.strip()
         pending_add_token.pop(message.from_user.id, None)
         return process_new_bot_token(message, token)
+    
+    if message.from_user.id in pending_rules:
+        bid = pending_rules.pop(message.from_user.id)
+        return process_new_rule(message, bid)
 
     if text.startswith("/start"):
         if message.from_user.id in settings.ADMIN_IDS:
@@ -149,6 +155,12 @@ def handle_admin_callback(call: CallbackQuery):
             enabled.add(command)
         db.set_bot_commands(bid, list(enabled))
         show_bot_commands(call, bid, int(page))
+    elif cmd.startswith("rules:"):
+        _, bid, page = cmd.split(":")
+        show_bot_rules(call, bid, int(page))
+    elif cmd.startswith("newrules:"):
+        _, bid, page = cmd.split(":")
+        set_bot_rules(call, bid, int(page))
 
     else:
         manager.admin_bot.answer_callback_query(call.id, "❓ Unknown action.")
@@ -203,6 +215,9 @@ def show_bot_list(chat_id, message_id, page=0):
             "🗑️ Remove", callback_data=f"remove:{bid}:{page}"))
         row.append(InlineKeyboardButton("⚙️ Commands",
                    callback_data=f"commands:{bid}:{page}"))
+        
+        row.append(InlineKeyboardButton("📋 Rules",
+                   callback_data=f"rules:{bid}:{page}"))
         kb.row(*row)
 
     nav_row = []
@@ -348,3 +363,29 @@ def show_bot_commands(call: CallbackQuery, bid: str, page: int):
 
     text = f"⚙️ *Command Settings for Bot {bid}*"
     safe_edit(call.message.chat.id, call.message.message_id, text, kb)
+
+def show_bot_rules(call: CallbackQuery, bid: str, page: int):
+    rules = db.get_bot_doc(bid).get("rules")
+    if not rules:
+        rules = "📛 No rules set."
+
+    text = f"📛 *Rules for Bot {bid}*\n\n{rules}"
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("✅ New Rules", callback_data=f"newrules:{bid}:{page}"))
+    kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
+    safe_edit(call.message.chat.id, call.message.message_id, text, kb)
+
+def set_bot_rules(call: CallbackQuery, bid: str, page: int):
+
+    chat_id = call.message.chat.id
+    # Ask for rules
+    pending_rules[chat_id] = bid
+    manager.admin_bot.send_message(chat_id, "📛 Send the rules to *set*.", parse_mode="Markdown")
+    manager.admin_bot.answer_callback_query(call.id, "Waiting for rules...")
+    
+
+def process_new_rule(message: Message, bid: str):
+    chat_id = message.chat.id
+    rules = message.text.strip()
+    db.set_bot_rules(bid, rules)
+    manager.admin_bot.send_message(chat_id, "✅ Rules set.", parse_mode="Markdown")
