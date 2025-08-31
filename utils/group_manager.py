@@ -1,39 +1,105 @@
+# utils/group_manager.py
+import json
+import redis
+from typing import List
 from utils.db import init_db
+from config import settings
 
-# 🔹 In-memory cache, but scoped per bot_id
-ALLOWED_GROUPS_CACHE = {}
+# keep a tiny in-process fallback cache (optional)
+ALLOWED_GROUPS_CACHE: dict = {}
+
+# === Redis connection (match utils/group_session.py) ===
+# If you have REDIS_HOST/PORT in settings, prefer them; else use localhost:6379
+REDIS_HOST = getattr(settings, "REDIS_HOST", "localhost")
+REDIS_PORT = getattr(settings, "REDIS_PORT", 6379)
+REDIS_DB = getattr(settings, "REDIS_DB", 0)
+_r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+
+# Redis hash key where we store allowed groups for all bots
+_ALLOWED_GROUPS_HASH = "allowed_groups"
 
 
-def get_allowed_groups(bot_id: str):
+def _redis_get_groups(bot_id: str):
+    """Return list from redis or None if key missing or error."""
+    try:
+        raw = _r.hget(_ALLOWED_GROUPS_HASH, bot_id)
+        if raw is None:
+            return None
+        return json.loads(raw)
+    except Exception as e:
+        # don't crash on redis error; fall back to DB
+        print(f"[group_manager.redis_get] Redis error: {e}")
+        return None
+
+
+def _redis_set_groups(bot_id: str, groups: List[int]):
+    """Persist list into redis (stringified)."""
+    try:
+        _r.hset(_ALLOWED_GROUPS_HASH, bot_id, json.dumps(list(groups)))
+    except Exception as e:
+        print(f"[group_manager.redis_set] Redis error: {e}")
+
+
+def get_allowed_groups(bot_id: str) -> List[int]:
     """
-    Return allowed groups for a bot (cached).
+    Return allowed groups for a bot. Uses Redis as the shared cache.
+    Falls back to MongoDB if Redis misses or errors, and then populates Redis.
     """
     global ALLOWED_GROUPS_CACHE
-    if bot_id not in ALLOWED_GROUPS_CACHE:
+
+    # 1) Try in-process cache (fast path)
+    if bot_id in ALLOWED_GROUPS_CACHE:
+        return ALLOWED_GROUPS_CACHE[bot_id]
+
+    # 2) Try Redis
+    groups = _redis_get_groups(bot_id)
+    if groups is not None:
+        ALLOWED_GROUPS_CACHE[bot_id] = groups
+        return groups
+
+    # 3) Fallback to DB
+    try:
         db = init_db()
         doc = db["settings"].find_one({"_id": f"allowed_groups:{bot_id}"}) or {"groups": []}
-        ALLOWED_GROUPS_CACHE[bot_id] = doc["groups"]
-    return ALLOWED_GROUPS_CACHE[bot_id]
+        groups = doc.get("groups", [])
+    except Exception as e:
+        print(f"[group_manager.db_read] DB error while fetching allowed_groups for {bot_id}: {e}")
+        groups = []
+
+    # write back to redis for future fast reads (best-effort)
+    try:
+        _redis_set_groups(bot_id, groups)
+    except Exception:
+        pass
+
+    ALLOWED_GROUPS_CACHE[bot_id] = groups
+    return groups
 
 
-def save_allowed_groups(bot_id: str, groups):
+def save_allowed_groups(bot_id: str, groups: List[int]):
     """
-    Persist allowed groups list for a bot and update cache.
+    Persist allowed groups list for a bot to MongoDB and Redis, and update local cache.
     """
     global ALLOWED_GROUPS_CACHE
-    db = init_db()
-    db["settings"].update_one(
-        {"_id": f"allowed_groups:{bot_id}"},
-        {"$set": {"groups": groups}},
-        upsert=True
-    )
-    ALLOWED_GROUPS_CACHE[bot_id] = groups
+    try:
+        db = init_db()
+        db["settings"].update_one(
+            {"_id": f"allowed_groups:{bot_id}"},
+            {"$set": {"groups": list(groups)}},
+            upsert=True
+        )
+    except Exception as e:
+        print(f"[group_manager.db_write] DB error while saving allowed_groups for {bot_id}: {e}")
+        # continue to attempt Redis update even if DB fails
+
+    # update Redis (best-effort)
+    _redis_set_groups(bot_id, groups)
+
+    # update local cache
+    ALLOWED_GROUPS_CACHE[bot_id] = list(groups)
 
 
 def add_group(bot_id: str, group_id: int):
-    """
-    Add a group to allowed list for a specific bot.
-    """
     groups = get_allowed_groups(bot_id)
     if group_id not in groups:
         groups.append(group_id)
@@ -41,9 +107,6 @@ def add_group(bot_id: str, group_id: int):
 
 
 def remove_group(bot_id: str, group_id: int):
-    """
-    Remove a group from allowed list for a specific bot.
-    """
     groups = get_allowed_groups(bot_id)
     if group_id in groups:
         groups.remove(group_id)
@@ -53,6 +116,7 @@ def remove_group(bot_id: str, group_id: int):
 def save_group_metadata(db, bot_id: str, chat):
     """
     Store/update group metadata for a given bot in MongoDB.
+    (unchanged from original)
     """
     if chat.type in ["group", "supergroup"]:
         db["groups"].update_one(
