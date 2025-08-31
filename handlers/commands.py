@@ -19,6 +19,8 @@ from utils.message_tracker import track_message, delete_tracked_messages
 from datetime import timedelta
 from telebot.types import ChatPermissions
 from utils.db import is_command_enabled
+from bson import ObjectId
+
 
 def handle_command(bot, bot_id: str, message, db):
     chat_id = message.chat.id
@@ -144,25 +146,28 @@ def handle_group_command(bot, bot_id: str, message, db):
 
         elif text == "/rule":
             try:
-                bot_data = db.bots.find_one({"_id": bot_id})
-                rules_text = bot_data.get("rules") or (
-                    "📛📛 <b>Likes Group Rules:</b>\n\n"
-                    "💜 please follow these rules during each session:\n\n"
-                    "1️⃣ <b>Link Drop Time</b>\n"
-                    "🕐 You have 1 hour to share your tweet link in the group.\n\n"
-                    "2️⃣ <b>1 Link Per Person</b>\n"
-                    "➤ Only one post per user is allowed per session. No double Link ❌.\n\n"
-                    "3️⃣ <b>TL id</b> 🆔\n"
-                    "🔁 After 1 hour, we’ll start reposting all shared tweets on our TL account\n\n"
-                    "4️⃣ <b>Like All Posts</b>\n"
-                    "❤️ You must like all shared tweets, from top to bottom, until we post “Open” under the last tweet.\n\n"
-                    "5️⃣ <b>Mark Completion</b>\n"
-                    "✅ Once done, typing \"AD\" or \"All Done\" in the group is mandatory."
-                )
+                bot_data = db.bots.find_one({"_id": ObjectId(bot_id)})
+                rules_text = bot_data.get("rules") if bot_data else None
+                if not rules_text:
+                    rules_text = (
+                        "📛📛 <b>Likes Group Rules:</b>\n\n"
+                        "💜 please follow these rules during each session:\n\n"
+                        "1️⃣ <b>Link Drop Time</b>\n"
+                        "🕐 You have 1 hour to share your tweet link in the group.\n\n"
+                        "2️⃣ <b>1 Link Per Person</b>\n"
+                        "➤ Only one post per user is allowed per session. No double Link ❌.\n\n"
+                        "3️⃣ <b>TL id</b> 🆔\n"
+                        "🔁 After 1 hour, we’ll start reposting all shared tweets on our TL account\n\n"
+                        "4️⃣ <b>Like All Posts</b>\n"
+                        "❤️ You must like all shared tweets, from top to bottom, until we post “Open” under the last tweet.\n\n"
+                        "5️⃣ <b>Mark Completion</b>\n"
+                        "✅ Once done, typing \"AD\" or \"All Done\" in the group is mandatory."
+                    )
                 msg = bot.send_message(chat_id, rules_text, parse_mode="HTML", disable_web_page_preview=True)
                 track_message(chat_id, msg.message_id, bot_id=bot_id)
             except Exception as e:
                 notify_dev(bot, e, "/rule", message)
+
 
         elif text in ["/verify", "/track", "/check"]:
             if is_user_admin(bot, chat_id, user_id):
