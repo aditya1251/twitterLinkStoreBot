@@ -1,6 +1,13 @@
+# handlers/text.py
 from telebot.types import Message
 from utils.group_manager import add_group, remove_group
-from utils.group_session import store_group_message, get_group_phase, mark_user_verified
+from utils.group_session import (
+    store_group_message,
+    get_group_phase,
+    mark_user_verified,
+    get_sr_users,
+    remove_sr_request,
+)
 from utils.message_tracker import track_message
 from utils.telegram import is_user_admin
 from handlers.admin import notify_dev
@@ -47,11 +54,16 @@ def handle_group_text(bot, bot_id: str, message: Message, db):
         group_id = chat.id
         phase = get_group_phase(bot_id, group_id)
 
+        # ignore admins
         if is_user_admin(bot, chat.id, user.id):
             return
 
+        # unify link/content extraction: prefer text, fallback to caption
+        link_or_content = (getattr(message, "text", None) or getattr(message, "caption", None) or "")
+
         if phase == "collecting":
             try:
+                # store the link (works for text messages and captioned media)
                 store_group_message(
                     bot,
                     bot_id,
@@ -59,7 +71,7 @@ def handle_group_text(bot, bot_id: str, message: Message, db):
                     group_id,
                     user.id,
                     user.username or user.first_name,
-                    message.text,
+                    link_or_content,
                     None,
                     user.first_name
                 )
@@ -69,22 +81,22 @@ def handle_group_text(bot, bot_id: str, message: Message, db):
         elif phase == "verifying":
             try:
                 done_keywords = ["done", "all done", "ad", "all dn"]
-                content = (message.text or message.caption or "").lower().strip()
+                content = link_or_content.lower().strip()
 
                 if content in done_keywords or content.startswith("ad"):
                     x_username, status = mark_user_verified(bot_id, group_id, user.id)
                     if x_username:
                         msg = bot.reply_to(message, f"𝕏 ID @{x_username}")
                         track_message(chat.id, msg.message_id, bot_id=bot_id)
-
                     else:
                         msg = bot.send_message(chat.id, f"{status}")
                         track_message(chat.id, msg.message_id, bot_id=bot_id)
-                    if message.caption:
-                        from utils.group_session import get_sr_users, remove_sr_request
+
+                    if getattr(message, "caption", None):
                         sr_users = get_sr_users(bot_id, group_id)
                         if user.id in sr_users:
                             remove_sr_request(bot_id, group_id, user.id)
+
             except Exception as e:
                 notify_dev(bot, e, "handle_group_text: verifying phase", message)
 

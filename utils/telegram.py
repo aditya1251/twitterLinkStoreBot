@@ -98,7 +98,7 @@ from config import settings
 from utils import db
 
 # Import your existing handlers (child bots reuse these)
-from handlers import commands, start, text, callbacks
+from handlers import commands, start, text as text_handler, callbacks
 from utils.message_tracker import track_message
 from utils.group_manager import get_allowed_groups, save_group_metadata
 
@@ -114,25 +114,32 @@ def manual_dispatch(bot, bot_id: str, update, db_conn):
     track_message(message.chat.id, message.message_id, bot_id=bot_id)
 
     chat = message.chat
-    if not message.text:
-        return
 
+    # safe access to text/caption
+    incoming_text = (getattr(message, "text", None) or "")  # prefer direct text
+    caption_text = (getattr(message, "caption", None) or "")
+
+    # PRIVATE: commands come from textual messages (most common). If no text, still pass to handler
     if chat.type == "private":
-        if message.text.startswith("/"):
+        if incoming_text.startswith("/"):
             commands.handle_command(bot, bot_id, message, db_conn)
         else:
-            text.handle_text(bot, bot_id, message, db_conn)
+            text_handler.handle_text(bot, bot_id, message, db_conn)
         return
 
+    # GROUP / SUPERGROUP
     if chat.type in ["group", "supergroup"]:
-        # ✅ Pass bot_id into group metadata & allowed groups
+        # store group metadata & check allowed groups
         save_group_metadata(db_conn, bot_id, message.chat)
         if chat.id not in get_allowed_groups(bot_id):
             return
-        if message.text.startswith("/"):
+
+        # command detection: only true text messages start with "/"
+        if incoming_text.startswith("/"):
             commands.handle_group_command(bot, bot_id, message, db_conn)
         else:
-            text.handle_group_text(bot, bot_id, message, db_conn)
+            # non-command messages (including media captions) go to group text handler
+            text_handler.handle_group_text(bot, bot_id, message, db_conn)
 
 from telebot import TeleBot
 from typing import Dict, Optional
