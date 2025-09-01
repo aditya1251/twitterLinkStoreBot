@@ -8,13 +8,10 @@ from utils.telegram import manager
 import re
 from telebot.apihelper import ApiTelegramException
 from utils.db import ALL_MAIN_COMMANDS, get_bot_commands
-from handlers.callbacks import pending_action
 
 TOKEN_PATTERN = re.compile(r"^\d+:[A-Za-z0-9_-]+$")
 
-# in-memory state for simple wizard flows
-pending_add_token = {}  # {admin_id: chat_id}
-pending_rules = {}  # {admin_id: chat_id}
+from utils import wizard_state
 
 BOTS_PER_PAGE = 5  # how many bots per page
 
@@ -71,14 +68,14 @@ def handle_admin_update(update: Update):
         return
 
     # Handle wizard "waiting for token"
-    if message.from_user.id in pending_add_token:
-        token = text.strip()
-        pending_add_token.pop(message.from_user.id, None)
-        return process_new_bot_token(message, token)
+    chat_id = wizard_state.pop_pending_add_token(message.from_user.id)
+    if chat_id:
+         token = text.strip()
+         return process_new_bot_token(message, token)
     
-    if message.from_user.id in pending_rules:
-        bid = pending_rules.pop(message.from_user.id)
-        return process_new_rule(message, bid)
+    bid = wizard_state.pop_pending_rules(message.from_user.id)
+    if bid:
+       return process_new_rule(message, bid)
 
     if text.startswith("/start"):
         if message.from_user.id in settings.ADMIN_IDS:
@@ -110,7 +107,7 @@ def handle_admin_callback(call: CallbackQuery):
                     help_text, back_btn())
 
         elif cmd == "cmd_addbot":
-            pending_add_token[call.from_user.id] = call.message.chat.id
+            wizard_state.set_pending_add_token(call.from_user.id, call.message.chat.id)
             safe_edit(
                 call.message.chat.id,
                 call.message.message_id,
@@ -386,7 +383,7 @@ def set_bot_rules(call: CallbackQuery, bid: str, page: int):
 
     chat_id = call.message.chat.id
     # Ask for rules
-    pending_rules[chat_id] = bid
+    wizard_state.set_pending_rules(call.from_user.id, bid)
     manager.admin_bot.send_message(chat_id, "📛 Send the rules to *set*.", parse_mode="Markdown")
     manager.admin_bot.answer_callback_query(call.id, "Waiting for rules...")
     

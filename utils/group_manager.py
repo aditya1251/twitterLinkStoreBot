@@ -4,16 +4,12 @@ import redis
 from typing import List
 from utils.db import init_db
 from config import settings
+from utils.redis_client import get_redis
 
 # keep a tiny in-process fallback cache (optional)
 ALLOWED_GROUPS_CACHE: dict = {}
 
-# === Redis connection (match utils/group_session.py) ===
-# If you have REDIS_HOST/PORT in settings, prefer them; else use localhost:6379
-REDIS_HOST = getattr(settings, "REDIS_HOST", "localhost")
-REDIS_PORT = getattr(settings, "REDIS_PORT", 6379)
-REDIS_DB = getattr(settings, "REDIS_DB", 0)
-_r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+_r = get_redis()
 
 # Redis hash key where we store allowed groups for all bots
 _ALLOWED_GROUPS_HASH = "allowed_groups"

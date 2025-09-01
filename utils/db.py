@@ -133,3 +133,27 @@ def is_command_enabled(bot_id: str, command: str) -> bool:
             return main_cmd in enabled
 
     return False
+
+def ensure_indexes():
+    db = init_db()
+
+    # users: optimize lookup by (chat_id, bot_id, user_id)
+    db["users"].create_index(
+        [("chat_id", 1), ("bot_id", 1), ("user_id", 1)],
+        name="users_chat_bot_user",
+        unique=True
+    )
+
+    # groups: optimize lookup by (bot_id, group_id)
+    db["groups"].create_index(
+        [("bot_id", 1), ("group_id", 1)],
+        name="groups_bot_group",
+        unique=True
+    )
+
+    # bots: prevent duplicate tokens
+    db["bots"].create_index(
+        [("token", 1)],
+        name="bots_token",
+        unique=True
+    )

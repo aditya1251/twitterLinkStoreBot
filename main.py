@@ -11,6 +11,8 @@ app = Flask(__name__)
 
 # === Initialize Mongo ===
 init_db()
+from utils.db import ensure_indexes
+ensure_indexes()
 
 # === Webhook for Admin Bot ===
 @app.route("/webhook/admin", methods=["POST"])

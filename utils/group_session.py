@@ -1,15 +1,15 @@
 import json
-import redis
 from telebot.types import Message, ChatPermissions
 from utils.message_tracker import track_message
 from handlers.admin import notify_dev
 from config import settings
 from utils.telegram import is_user_admin
+from utils.redis_client import get_redis
 
 ADMIN_IDS = settings.ADMIN_IDS
 
 # === Redis Connection ===
-r = redis.Redis(host="localhost", port=6379, decode_responses=True)
+r = get_redis()
 
 # Helper: serialize/deserialize dict safely
 def _get(bot_id: str, key: str, default):
