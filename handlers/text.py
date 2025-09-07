@@ -11,7 +11,7 @@ from utils.group_session import (
 from utils.message_tracker import track_message
 from utils.telegram import is_user_admin
 from handlers.admin import notify_dev
-from utils import wizard_state
+from utils import wizard_state, db
 
 
 def handle_text(bot, bot_id: str, message: Message, db):
@@ -34,6 +34,19 @@ def handle_text(bot, bot_id: str, message: Message, db):
                         remove_group(bot_id, group_id)
                         msg = bot.send_message(chat_id, f"🗑️ Group `{group_id}` removed.", parse_mode="Markdown")
                         track_message(chat_id, msg.message_id, bot_id=bot_id)
+                    elif action.startswith("addcustom:"):
+                        _, bid, page = action.split(":")
+                        # Step 1: save command, ask for reply text
+                        wizard_state.set_pending_action(user_id, f"addcustomreply:{bid}:{text}:{page}")
+                        bot.send_message(chat_id, f"📩 Now send the *reply text* for command {text}", parse_mode="Markdown")
+                        return
+                    elif action.startswith("addcustomreply:"):
+                        _, bid, command, page = action.split(":")
+                        reply_text = text
+                        db.set_bot_custom_command(bid, command, reply_text)
+                        bot.send_message(chat_id, f"✅ Custom command {command} saved.")
+                        return
+
                 except ValueError:
                     msg = bot.send_message(chat_id, "❌ Invalid group ID.")
                     track_message(chat_id, msg.message_id, bot_id=bot_id)

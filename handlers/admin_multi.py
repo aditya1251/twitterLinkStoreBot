@@ -160,6 +160,18 @@ def handle_admin_callback(call: CallbackQuery):
         elif cmd.startswith("newrules:"):
             _, bid, page = cmd.split(":")
             set_bot_rules(call, bid, int(page))
+        elif cmd.startswith("customcmds:"):
+            _, bid, page = cmd.split(":")
+            show_custom_commands(call, bid, int(page))
+        elif cmd.startswith("newcustom:"):
+            _, bid, page = cmd.split(":")
+            ask_new_custom_command(call, bid, int(page))
+        elif cmd.startswith("delcustom:"):
+            _, bid, command, page = cmd.split(":")
+            from utils import db
+            db.delete_custom_command(bid, command)
+            show_custom_commands(call, bid, int(page))
+
 
         else:
             manager.admin_bot.answer_callback_query(call.id, "❓ Unknown action.")
@@ -219,6 +231,7 @@ def show_bot_list(chat_id, message_id, page=0):
         
         row.append(InlineKeyboardButton("📋 Rules",
                    callback_data=f"rules:{bid}:{page}"))
+        row.append(InlineKeyboardButton("📝 Custom Cmds", callback_data=f"customcmds:{bid}:{page}"))
         kb.row(*row)
 
     nav_row = []
@@ -393,3 +406,30 @@ def process_new_rule(message: Message, bid: str):
     rules = message.text.strip()
     db.set_bot_rules(bid, rules)
     manager.admin_bot.send_message(chat_id, "✅ Rules set.", parse_mode="Markdown")
+
+
+from utils import wizard_state, db
+
+def show_custom_commands(call, bid: str, page: int):
+    cmds = db.list_custom_commands(bid)
+    if not cmds:
+        text = f"📝 No custom commands for Bot {bid}."
+    else:
+        text = f"📝 *Custom Commands for Bot {bid}:*\n\n"
+        for c, reply in cmds.items():
+            text += f"{c} → {reply[:30]}...\n"
+
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("➕ Add Command", callback_data=f"newcustom:{bid}:{page}"))
+    for c in cmds.keys():
+        kb.add(InlineKeyboardButton(f"🗑 Remove {c}", callback_data=f"delcustom:{bid}:{c}:{page}"))
+    kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
+
+    safe_edit(call.message.chat.id, call.message.message_id, text, kb)
+
+
+def ask_new_custom_command(call, bid: str, page: int):
+    chat_id = call.message.chat.id
+    wizard_state.set_pending_action(call.from_user.id, f"addcustom:{bid}:{page}")
+    manager.admin_bot.send_message(chat_id, "✏️ Send the *command name* (e.g., `/u`).", parse_mode="Markdown")
+    manager.admin_bot.answer_callback_query(call.id, "Waiting for command...")

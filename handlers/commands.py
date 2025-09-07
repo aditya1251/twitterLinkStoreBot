@@ -18,7 +18,7 @@ from utils.group_session import (
 from utils.message_tracker import track_message, delete_tracked_messages
 from datetime import timedelta
 from telebot.types import ChatPermissions
-from utils.db import is_command_enabled
+from utils.db import is_command_enabled, get_custom_command
 from bson import ObjectId
 
 
@@ -111,6 +111,15 @@ def handle_group_command(bot, bot_id: str, message, db):
         text = text.split("@")[0]
     
     try:
+        reply = get_custom_command(bot_id, text)
+        if reply:
+            try:
+                msg = bot.send_message(chat_id, reply, parse_mode="HTML", disable_web_page_preview=True)
+                track_message(chat_id, msg.message_id, bot_id=bot_id)
+                return
+            except Exception as e:
+                notify_dev(bot, e, f"custom command {text}", message)
+
         if text in ["/start", "/starts"]:
             try:
                 start.handle_start_group(bot,bot_id, message)

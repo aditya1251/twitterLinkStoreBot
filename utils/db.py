@@ -157,3 +157,31 @@ def ensure_indexes():
         name="bots_token",
         unique=True
     )
+
+# === Custom Commands ===
+def set_bot_custom_command(bot_id: str, command: str, reply: str):
+    db = init_db()
+    db["settings"].update_one(
+        {"_id": f"customcmds:{bot_id}"},
+        {"$set": {f"commands.{command}": reply}},
+        upsert=True
+    )
+
+def get_custom_command(bot_id: str, command: str):
+    db = init_db()
+    doc = db["settings"].find_one({"_id": f"customcmds:{bot_id}"})
+    if not doc:
+        return None
+    return doc.get("commands", {}).get(command)
+
+def list_custom_commands(bot_id: str) -> dict:
+    db = init_db()
+    doc = db["settings"].find_one({"_id": f"customcmds:{bot_id}"})
+    return doc.get("commands", {}) if doc else {}
+
+def delete_custom_command(bot_id: str, command: str):
+    db = init_db()
+    db["settings"].update_one(
+        {"_id": f"customcmds:{bot_id}"},
+        {"$unset": {f"commands.{command}": ""}}
+    )
