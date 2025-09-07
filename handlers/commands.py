@@ -255,7 +255,7 @@ def handle_group_command(bot, bot_id: str, message, db):
                 if not users:
                     msg = bot.send_message(chat_id, "✅ All users are safe.")
                 else:
-                    msg_text = "<b>⚠️ Unsafe Users:</b>\n"
+                    msg_text = "<b>⚠️ These users did not send 'ad' or 'all done':</b>\n"
                     for user in users:
                         msg_text += f"\n• {user}"
                     msg = bot.send_message(chat_id, msg_text, parse_mode="HTML")

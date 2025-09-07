@@ -118,8 +118,6 @@ def store_group_message(bot, bot_id: str, message: Message, group_id, user_id, u
     group_messages.setdefault(gid, [])
     unique_x_usernames.setdefault(gid, [])
 
-    print(f"Storing message from {user_id} in group {gid} with link {link}")
-
     # only process x.com links
     if not link.startswith("https://x.com"):
         return
@@ -422,7 +420,7 @@ def handle_sr_command(bot, bot_id: str, message: Message):
         request_sr(bot_id, chat_id, user_id)
 
         display_name = f'<a href="tg://user?id={user_id}">{message.reply_to_message.from_user.first_name}</a>'
-        msg = bot.reply_to(message, f"⚠️ SR requested from {display_name}", parse_mode="HTML")
+        msg = bot.reply_to(message, f"Please recheck {display_name} your likes are missing and send a screen recording 'DM' Make sure your profile is visible too! with TL profile mentioned or pinned as per post", parse_mode="HTML")
         track_message(chat_id, msg.message_id, bot_id=bot_id)
 
     except Exception as e:
@@ -462,9 +460,10 @@ def handle_srlist_command(bot, bot_id: str, message: Message):
             mentions = [f"User ID: <code>{uid}</code>" for uid in sr_users]
 
         message_text = (
-            "📋 <b>These users <i>need</i> to recheck and "
-            "<u>send a screen recording video</u> in this group with your own X/twitter profile visible in it must</b>‼️📛📛\n\n"
-            "🚫 <b>If you guys ignore sending SR, you will be marked as a scammer and muted strictly from the group.</b> 🚫🚫\n\n"
+           " ⚠️ These users need to recheck and send a screen recording video"
+            "in this group with your own X/twitter profile visible in it must ❗️\n\n"
+            "If you guys ignore sending SR, you will be marked as a"
+            "scammer and muted strictly from the group. 🚫🚫\n\n"
         )
         message_text += "\n".join(mentions)
 

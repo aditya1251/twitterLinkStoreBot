@@ -86,7 +86,7 @@ def handle_group_text(bot, bot_id: str, message: Message, db):
                 if content in done_keywords or content.startswith("ad"):
                     x_username, status = mark_user_verified(bot_id, group_id, user.id)
                     if x_username:
-                        msg = bot.reply_to(message, f"𝕏 ID @{x_username}")
+                        msg = bot.reply_to(message, f"𝕏 ID @{x_username}\n\n profile 🔗: https://x.com/{x_username}")
                         track_message(chat.id, msg.message_id, bot_id=bot_id)
                     else:
                         msg = bot.send_message(chat.id, f"{status}")
