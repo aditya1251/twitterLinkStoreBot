@@ -34,18 +34,7 @@ def handle_text(bot, bot_id: str, message: Message, db):
                         remove_group(bot_id, group_id)
                         msg = bot.send_message(chat_id, f"🗑️ Group `{group_id}` removed.", parse_mode="Markdown")
                         track_message(chat_id, msg.message_id, bot_id=bot_id)
-                    elif action.startswith("addcustom:"):
-                        _, bid, page = action.split(":")
-                        # Step 1: save command, ask for reply text
-                        wizard_state.set_pending_action(user_id, f"addcustomreply:{bid}:/{text}:{page}")
-                        bot.send_message(chat_id, f"📩 Now send the *reply text* for command /{text}", parse_mode="Markdown")
-                        return
-                    elif action.startswith("addcustomreply:"):
-                        _, bid, command, page = action.split(":")
-                        reply_text = text
-                        db.set_bot_custom_command(bid, command, reply_text)
-                        bot.send_message(chat_id, f"✅ Custom command {command} saved.")
-                        return
+                    
 
                 except ValueError:
                     msg = bot.send_message(chat_id, "❌ Invalid group ID.")

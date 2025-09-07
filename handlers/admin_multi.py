@@ -8,6 +8,8 @@ from utils.telegram import manager
 import re
 from telebot.apihelper import ApiTelegramException
 from utils.db import ALL_MAIN_COMMANDS, get_bot_commands
+from handlers.admin import notify_dev
+
 
 TOKEN_PATTERN = re.compile(r"^\d+:[A-Za-z0-9_-]+$")
 
@@ -72,6 +74,29 @@ def handle_admin_update(update: Update):
     if chat_id:
          token = text.strip()
          return process_new_bot_token(message, token)
+    
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    text = message.text.strip()
+
+    try:
+        if message.chat.type == "private":
+            action = wizard_state.pop_pending_action(user_id)
+            if action:
+                if action.startswith("addcustom:"):
+                    _, bid, page = action.split(":")
+                    # Step 1: save command, ask for reply text
+                    wizard_state.set_pending_action(user_id, f"addcustomreply:{bid}:{text}:{page}")
+                    manager.admin_bot.send_message(chat_id, f"📩 Now send the *reply text* for command {text}", parse_mode="Markdown")
+                    return
+                elif action.startswith("addcustomreply:"):
+                    _, bid, command, page = action.split(":")
+                    reply_text = text
+                    db.set_bot_custom_command(bid, command, reply_text)
+                    manager.admin_bot.send_message(chat_id, f"✅ Custom command {command} saved.")
+                    return
+    except Exception as e:
+        notify_dev(manager.admin_bot, e, "handle_admin_callback: custom command", message)
     
     bid = wizard_state.pop_pending_rules(message.from_user.id)
     if bid:
