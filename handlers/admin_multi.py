@@ -431,5 +431,5 @@ def show_custom_commands(call, bid: str, page: int):
 def ask_new_custom_command(call, bid: str, page: int):
     chat_id = call.message.chat.id
     wizard_state.set_pending_action(call.from_user.id, f"addcustom:{bid}:{page}")
-    manager.admin_bot.send_message(chat_id, "✏️ Send the *command name* (e.g., `/u`).", parse_mode="Markdown")
+    manager.admin_bot.send_message(chat_id, "✏️ Send the *command name* (e.g., `u`).", parse_mode="Markdown")
     manager.admin_bot.answer_callback_query(call.id, "Waiting for command...")

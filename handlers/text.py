@@ -37,8 +37,8 @@ def handle_text(bot, bot_id: str, message: Message, db):
                     elif action.startswith("addcustom:"):
                         _, bid, page = action.split(":")
                         # Step 1: save command, ask for reply text
-                        wizard_state.set_pending_action(user_id, f"addcustomreply:{bid}:{text}:{page}")
-                        bot.send_message(chat_id, f"📩 Now send the *reply text* for command {text}", parse_mode="Markdown")
+                        wizard_state.set_pending_action(user_id, f"addcustomreply:{bid}:/{text}:{page}")
+                        bot.send_message(chat_id, f"📩 Now send the *reply text* for command /{text}", parse_mode="Markdown")
                         return
                     elif action.startswith("addcustomreply:"):
                         _, bid, command, page = action.split(":")
