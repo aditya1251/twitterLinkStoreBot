@@ -16,6 +16,7 @@ from utils.group_session import (
     get_formatted_user_link_list
 )
 from utils.message_tracker import track_message, delete_tracked_messages
+from utils.message_tracker import delete_tracked_messages_with_progress
 from datetime import timedelta
 from telebot.types import ChatPermissions
 from utils.db import is_command_enabled, get_custom_command
@@ -339,14 +340,14 @@ def handle_group_command(bot, bot_id: str, message, db):
             except Exception as e:
                 notify_dev(bot, e, "/srlist", message)
 
-        elif text in ["/clear", "/clean"]:
+        elif text in ["/clear", "/clean","/delete"]:
             try:
 
                 if not is_user_admin(bot, message.chat.id, message.from_user.id):
                     msg = bot.reply_to(message, "❌ Only admins can use this command.")
                     track_message(message.chat.id, msg.message_id, bot_id=bot_id)
                     return
-                delete_tracked_messages(bot, message.chat.id, bot_id=bot_id)
+                delete_tracked_messages_with_progress(bot, message.chat.id, bot_id=bot_id)
             except Exception as e:
                 notify_dev(bot, e, "/clear", message)
 
