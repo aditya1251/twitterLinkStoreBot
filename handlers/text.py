@@ -59,6 +59,11 @@ def handle_group_text(bot, bot_id: str, message: Message, db):
         # ignore admins
         if is_user_admin(bot, chat.id, user.id):
             return
+        
+        if message and getattr(message, "sender_chat", None):
+            sender = message.sender_chat
+            if sender.id == chat.id:  # Anonymous Admin sends as the group itself
+                return True
 
         # unify link/content extraction: prefer text, fallback to caption
         link_or_content = (getattr(message, "text", None) or getattr(message, "caption", None) or "")
