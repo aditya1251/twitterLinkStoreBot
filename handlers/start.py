@@ -4,7 +4,6 @@ from utils.group_session import start_group_session, stop_group_session, get_gro
 from utils.message_tracker import track_message
 from handlers.admin import notify_dev
 
-
 def handle_start_group(bot, bot_id: str, message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -19,6 +18,25 @@ def handle_start_group(bot, bot_id: str, message: Message):
 
             # ✅ Start session
             start_group_session(bot_id, chat_id)
+
+            # ✅ Update group title → {old_name} | OPEN
+            try:
+                chat_info = bot.get_chat(chat_id)
+                old_title = chat_info.title or ""
+                new_title = old_title
+
+                if new_title.endswith(" | OPEN"):
+                    pass  # already open
+                elif new_title.endswith(" | CLOSED"):
+                    new_title = new_title.rsplit(" | CLOSED", 1)[0] + " | OPEN"
+                else:
+                    new_title = new_title + " | OPEN"
+
+                if new_title != old_title:
+                    bot.set_chat_title(chat_id, new_title)
+
+            except Exception as e:
+                notify_dev(bot, e, "start_group: update title", message)
 
             # ✅ Set group permissions
             try:
@@ -53,7 +71,6 @@ def handle_start_group(bot, bot_id: str, message: Message):
     except Exception as e:
         notify_dev(bot, e, "handle_start_group outer", message)
 
-
 def handle_cancel_group(bot, bot_id: str, message: Message, db):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -69,6 +86,25 @@ def handle_cancel_group(bot, bot_id: str, message: Message, db):
                 )
             except Exception as e:
                 notify_dev(bot, e, "cancel_group: session stop or DB update", message)
+
+            # ✅ Update group title → {old_name} | CLOSED
+            try:
+                chat_info = bot.get_chat(chat_id)
+                old_title = chat_info.title or ""
+                new_title = old_title
+
+                if new_title.endswith(" | CLOSED"):
+                    pass  # already closed
+                elif new_title.endswith(" | OPEN"):
+                    new_title = new_title.rsplit(" | OPEN", 1)[0] + " | CLOSED"
+                else:
+                    new_title = new_title + " | CLOSED"
+
+                if new_title != old_title:
+                    bot.set_chat_title(chat_id, new_title)
+
+            except Exception as e:
+                notify_dev(bot, e, "cancel_group: update title", message)
 
             # ✅ Restrict group
             try:
@@ -102,7 +138,6 @@ def handle_cancel_group(bot, bot_id: str, message: Message, db):
 
     except Exception as e:
         notify_dev(bot, e, "handle_cancel_group outer", message)
-
 
 def handle_start(bot, bot_id: str, message: Message):
     chat_id = message.chat.id

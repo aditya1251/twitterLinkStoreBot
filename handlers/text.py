@@ -104,6 +104,21 @@ def handle_group_text(bot, bot_id: str, message: Message, db):
                         if user.id in sr_users:
                             remove_sr_request(bot_id, group_id, user.id)
 
+                elif link_or_content.startswith("https://x.com/") or link_or_content.startswith("https://twitter.com/"):
+                    try:
+                        warn = bot.send_message(
+                            chat.id,
+                            f"<a href='tg://user?id={user.id}'>{message.from_user.first_name}</a>Invalid Link! Join next session.",
+                            parse_mode="HTML"
+                        )
+                        track_message(chat.id, warn.message_id, bot_id=bot_id)
+                    except Exception:
+                        pass
+                    try:
+                        bot.delete_message(chat.id, message.message_id)
+                    except Exception:
+                        pass
+
             except Exception as e:
                 notify_dev(bot, e, "handle_group_text: verifying phase", message)
 

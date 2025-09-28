@@ -118,13 +118,33 @@ def store_group_message(bot, bot_id: str, message: Message, group_id, user_id, u
     group_messages.setdefault(gid, [])
     unique_x_usernames.setdefault(gid, [])
 
-    # only process x.com links
+    # ❌ Only allow x.com links
     if not link.startswith("https://x.com"):
         return
 
     x_username = link.split("/")[3]
 
-    # First time this X username appears
+    # 🚫 Prevent same TG user from sending more than one link
+    already_sent = any(entry["user_id"] == user_id for entry in group_messages[gid])
+    if already_sent:
+        try:
+            warn = bot.send_message(
+                message.chat.id,
+                f"❌ <a href='tg://user?id={user_id}'>{message.from_user.first_name}</a>You can only send one link.",
+                parse_mode="HTML"
+            )
+            track_message(message.chat.id, warn.message_id, bot_id=bot_id)
+        except Exception:
+            pass
+
+        try:
+            bot.delete_message(message.chat.id, message.message_id)
+        except Exception:
+            pass
+
+        return
+
+    # ✅ First time this X username appears
     if x_username not in unique_x_usernames[gid]:
         unique_x_usernames[gid].append(x_username)
         group_messages[gid].append({
@@ -140,7 +160,7 @@ def store_group_message(bot, bot_id: str, message: Message, group_id, user_id, u
         _set(bot_id, "unique_x_usernames", unique_x_usernames)
         return
 
-    # Duplicate detected — collect all users who shared this X username
+    # 🔎 Duplicate username found — collect offenders
     offenders = [
         entry for entry in group_messages[gid]
         if entry["x_username"] == x_username and entry["user_id"] != user_id
@@ -164,7 +184,7 @@ def store_group_message(bot, bot_id: str, message: Message, group_id, user_id, u
         "first_name": first_name,
     })
 
-    # Create mention links
+    # 🏷️ Create mention links
     tags = []
     for u in offenders:
         name = u.get("first_name") or "User"
@@ -180,7 +200,42 @@ def store_group_message(bot, bot_id: str, message: Message, group_id, user_id, u
     )
 
     msg = bot.reply_to(message, text=alert, parse_mode="HTML")
+    try:
+        bot.delete_message(message.chat.id, message.message_id)
+    except Exception:
+        pass
     track_message(message.chat.id, msg.message_id, bot_id=bot_id)
+
+
+# 🔹 Utility: Delete a user’s stored link from Redis
+def delete_user_link(bot_id: str, group_id, user_id):
+    gid = normalize_gid(group_id)
+    group_messages = _get(bot_id, "group_messages", {})
+    unique_x_usernames = _get(bot_id, "unique_x_usernames", {})
+
+    if gid not in group_messages:
+        return False
+
+    # Find the entry for this user
+    entry = next((e for e in group_messages[gid] if e["user_id"] == user_id), None)
+    if not entry:
+        return False
+
+    x_username = entry["x_username"]
+
+    # Remove from messages
+    group_messages[gid] = [e for e in group_messages[gid] if e["user_id"] != user_id]
+
+    # If no other user is using this x_username, remove it from unique list
+    still_used = any(e["x_username"] == x_username for e in group_messages[gid])
+    if not still_used and gid in unique_x_usernames:
+        unique_x_usernames[gid] = [x for x in unique_x_usernames[gid] if x != x_username]
+
+    # Save updates
+    _set(bot_id, "group_messages", group_messages)
+    _set(bot_id, "unique_x_usernames", unique_x_usernames)
+
+    return True
 
 # ---------------- Group closing & verification ----------------
 def handle_close_group(bot, bot_id: str, message):
@@ -189,6 +244,26 @@ def handle_close_group(bot, bot_id: str, message):
     active_groups[gid] = "closed"
     _set(bot_id, "active_groups", active_groups)
 
+    # ✅ Update group title → {old_name} | CLOSED
+    try:
+        chat_info = bot.get_chat(message.chat.id)
+        old_title = chat_info.title or ""
+        new_title = old_title
+
+        if new_title.endswith(" | CLOSED"):
+            pass  # already closed
+        elif new_title.endswith(" | OPEN"):
+            new_title = new_title.rsplit(" | OPEN", 1)[0] + " | CLOSED"
+        else:
+            new_title = new_title + " | CLOSED"
+
+        if new_title != old_title:
+            bot.set_chat_title(message.chat.id, new_title)
+
+    except Exception:
+        pass
+
+    # ✅ Restrict group
     try:
         restricted_permissions = ChatPermissions(
             can_send_messages=False,
@@ -201,9 +276,12 @@ def handle_close_group(bot, bot_id: str, message):
     except Exception:
         pass
 
+    # ✅ Stop video
     try:
         msg = bot.send_video(message.chat.id, open("gifs/stop.mp4", "rb"))
+        msg2 = bot.send_message(message.chat.id, "Time line is getting updated wait few mins.")
         track_message(message.chat.id, msg.message_id, bot_id=bot_id)
+        track_message(message.chat.id, msg2.message_id, bot_id=bot_id)
     except Exception:
         pass
 

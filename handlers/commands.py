@@ -13,6 +13,7 @@ from utils.group_session import (
     set_verification_phase,
     get_all_links_count,
     handle_close_group,
+    delete_user_link,
     get_formatted_user_link_list
 )
 from utils.message_tracker import track_message, delete_tracked_messages
@@ -272,6 +273,21 @@ def handle_group_command(bot, bot_id: str, message, db):
                 track_message(chat_id, msg.message_id, bot_id=bot_id)
             except Exception as e:
                 notify_dev(bot, e, "/unsafe", message)
+        
+        elif text.startswith("/delLink"):
+            if not is_user_admin(bot, chat_id, user_id):
+                msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
+                track_message(chat_id, msg.message_id, bot_id=bot_id)
+                return
+            try:
+                user_id = message.reply_to_message.from_user.id
+                if delete_user_link(bot_id, chat_id, user_id):
+                    msg = bot.send_message(chat_id, f"✅ Link deleted for <a href='tg://user?id={user_id}'>{message.reply_to_message.from_user.first_name}</a>")
+                else:
+                    msg = bot.send_message(chat_id, f"❌ No link found for <a href='tg://user?id={user_id}'>{message.reply_to_message.from_user.first_name}</a>")
+                track_message(chat_id, msg.message_id, bot_id=bot_id)
+            except Exception as e:
+                notify_dev(bot, e, "/delLink", message)
 
         elif text.startswith("/muteunsafe") or text.startswith("/muteall"):
             if not is_user_admin(bot, chat_id, user_id):
