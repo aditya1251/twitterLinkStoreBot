@@ -96,6 +96,8 @@ def handle_group_text(bot, bot_id: str, message: Message, db):
                         msg = bot.reply_to(message, f"𝕏 ID @{x_username}\n\n profile 🔗: https://x.com/{x_username}")
                         track_message(chat.id, msg.message_id, bot_id=bot_id)
                     else:
+                        if status is None:
+                            return
                         msg = bot.send_message(chat.id, f"{status}")
                         track_message(chat.id, msg.message_id, bot_id=bot_id)
 
