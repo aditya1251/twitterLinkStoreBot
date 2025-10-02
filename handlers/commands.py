@@ -144,7 +144,7 @@ def handle_group_command(bot, bot_id: str, message, db):
             if is_user_admin(bot, chat_id, user_id):
                 try:
                     admins = bot.get_chat_administrators(chat_id)
-                    set_cached_admins(chat_id, [admin.user.id for admin in admins], bot_id=bot_id)
+                    set_cached_admins(chat_id, [admin.user.id for admin in admins])
                     msg = bot.send_message(chat_id, "✅ Admin list refreshed.")
                     track_message(chat_id, msg.message_id, bot_id=bot_id)
                 except Exception as e:
