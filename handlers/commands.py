@@ -242,12 +242,25 @@ def handle_group_command(bot, bot_id: str, message, db):
                 track_message(chat_id, msg.message_id, bot_id=bot_id)
                 return
             try:
-                result, count = get_formatted_user_link_list(bot_id,chat_id)
+                result, count = get_formatted_user_link_list(bot_id, chat_id)
                 if not result:
                     msg = bot.send_message(chat_id, "ℹ️ No users have submitted X links yet.")
-                else:
-                    msg = bot.send_message(chat_id, f"<b>🚨 USERS LIST 🚨: {count}</b>\n\n{result}", parse_mode="HTML", disable_web_page_preview=True)
-                track_message(chat_id, msg.message_id, bot_id=bot_id)
+                    track_message(chat_id, msg.message_id, bot_id=bot_id)
+                    return
+
+                header = f"<b>🚨 USERS LIST 🚨: {count}</b>\n\n"
+                chunk = header
+                for line in result.split("\n"):
+                    if len(chunk) + len(line) + 1 > 4000:  # +1 for newline
+                        msg = bot.send_message(chat_id, chunk, parse_mode="HTML", disable_web_page_preview=True)
+                        track_message(chat_id, msg.message_id, bot_id=bot_id)
+                        chunk = ""  # start new chunk
+                    chunk += line + "\n"
+
+                if chunk:
+                    msg = bot.send_message(chat_id, chunk, parse_mode="HTML", disable_web_page_preview=True)
+                    track_message(chat_id, msg.message_id, bot_id=bot_id)
+
             except Exception as e:
                 notify_dev(bot, e, "/list", message)
 
@@ -257,7 +270,7 @@ def handle_group_command(bot, bot_id: str, message, db):
                 track_message(chat_id, msg.message_id, bot_id=bot_id)
                 return
             try:
-                users = get_unverified_users(bot_id,chat_id)
+                users = get_unverified_users(bot_id, chat_id)
                 if users == "notVerifyingphase":
                     msg = bot.send_message(chat_id, "⚠️ This session is not in the verifying phase.")
                     track_message(chat_id, msg.message_id, bot_id=bot_id)
@@ -265,15 +278,28 @@ def handle_group_command(bot, bot_id: str, message, db):
 
                 if not users:
                     msg = bot.send_message(chat_id, "✅ All users are safe.")
-                else:
-                    msg_text = "<b>⚠️ These users did not send 'ad' or 'all done':</b>\n"
-                    for user in users:
-                        msg_text += f"\n• {user}"
-                    msg = bot.send_message(chat_id, msg_text, parse_mode="HTML")
-                track_message(chat_id, msg.message_id, bot_id=bot_id)
+                    track_message(chat_id, msg.message_id, bot_id=bot_id)
+                    return
+
+                # Build the list text safely
+                header = "<b>⚠️ These users did not send 'ad' or 'all done':</b>\n"
+                chunk = header
+                for user in users:
+                    line = f"\n• {user}"
+                    if len(chunk) + len(line) > 4000:  # keep under Telegram’s 4096 limit
+                        msg = bot.send_message(chat_id, chunk, parse_mode="HTML")
+                        track_message(chat_id, msg.message_id, bot_id=bot_id)
+                        chunk = ""  # reset for next chunk
+                    chunk += line
+
+                # send remaining users
+                if chunk:
+                    msg = bot.send_message(chat_id, chunk, parse_mode="HTML")
+                    track_message(chat_id, msg.message_id, bot_id=bot_id)
+
             except Exception as e:
                 notify_dev(bot, e, "/unsafe", message)
-        
+
         elif text.startswith("/delLink"):
             if not is_user_admin(bot, chat_id, user_id):
                 msg = bot.send_message(chat_id, "❌ Only admins can use this command.")

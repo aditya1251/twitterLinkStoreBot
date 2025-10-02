@@ -12,19 +12,25 @@ ADMIN_IDS = settings.ADMIN_IDS
 r = get_redis()
 
 # Helper: serialize/deserialize dict safely
+
+
 def _get(bot_id: str, key: str, default):
     raw = r.hget(f"sessions:{bot_id}", key)
     if raw is None:
         return default
     return json.loads(raw)
 
+
 def _set(bot_id: str, key: str, value):
     r.hset(f"sessions:{bot_id}", key, json.dumps(value))
+
 
 def normalize_gid(group_id):
     return str(group_id)
 
 # ---------------- Session Control ----------------
+
+
 def start_group_session(bot_id: str, group_id):
     gid = normalize_gid(group_id)
     active_groups = _get(bot_id, "active_groups", {})
@@ -41,6 +47,7 @@ def start_group_session(bot_id: str, group_id):
     _set(bot_id, "group_messages", group_messages)
     _set(bot_id, "sr_requested_users", sr_requested_users)
     _set(bot_id, "unique_x_usernames", unique_x_usernames)
+
 
 def stop_group_session(bot_id: str, group_id):
     gid = normalize_gid(group_id)
@@ -61,6 +68,7 @@ def stop_group_session(bot_id: str, group_id):
 
     return msgs
 
+
 def set_verification_phase(bot_id: str, group_id):
     gid = normalize_gid(group_id)
     active_groups = _get(bot_id, "active_groups", {})
@@ -68,21 +76,27 @@ def set_verification_phase(bot_id: str, group_id):
         active_groups[gid] = "verifying"
         _set(bot_id, "active_groups", active_groups)
 
+
 def get_group_phase(bot_id: str, group_id):
     return _get(bot_id, "active_groups", {}).get(normalize_gid(group_id))
+
 
 def is_group_verifying(bot_id: str, group_id):
     return get_group_phase(bot_id, group_id) == "verifying"
 
 # ---------------- Messages ----------------
+
+
 def add_group_message(bot_id: str, group_id, message_data: dict):
     gid = normalize_gid(group_id)
     group_messages = _get(bot_id, "group_messages", {})
     group_messages.setdefault(gid, []).append(message_data)
     _set(bot_id, "group_messages", group_messages)
 
+
 def get_group_messages(bot_id: str, group_id):
     return _get(bot_id, "group_messages", {}).get(normalize_gid(group_id), [])
+
 
 def request_sr(bot_id: str, group_id, user_id):
     gid = normalize_gid(group_id)
@@ -100,6 +114,7 @@ def request_sr(bot_id: str, group_id, user_id):
     _set(bot_id, "sr_requested_users", sr_users)
     _set(bot_id, "group_messages", group_messages)
 
+
 def remove_sr_request(bot_id: str, group_id, user_id):
     gid = normalize_gid(group_id)
     sr_users = _get(bot_id, "sr_requested_users", {})
@@ -107,8 +122,10 @@ def remove_sr_request(bot_id: str, group_id, user_id):
         sr_users[gid].remove(user_id)
         _set(bot_id, "sr_requested_users", sr_users)
 
+
 def get_sr_users(bot_id: str, group_id):
     return set(_get(bot_id, "sr_requested_users", {}).get(normalize_gid(group_id), []))
+
 
 def store_group_message(bot, bot_id: str, message: Message, group_id, user_id, username, link, x_username=None, first_name=None):
     gid = normalize_gid(group_id)
@@ -125,7 +142,8 @@ def store_group_message(bot, bot_id: str, message: Message, group_id, user_id, u
     x_username = link.split("/")[3]
 
     # 🚫 Prevent same TG user from sending more than one link
-    already_sent = any(entry["user_id"] == user_id for entry in group_messages[gid])
+    already_sent = any(entry["user_id"] ==
+                       user_id for entry in group_messages[gid])
     if already_sent:
         try:
             warn = bot.send_message(
@@ -217,19 +235,23 @@ def delete_user_link(bot_id: str, group_id, user_id):
         return False
 
     # Find the entry for this user
-    entry = next((e for e in group_messages[gid] if e["user_id"] == user_id), None)
+    entry = next(
+        (e for e in group_messages[gid] if e["user_id"] == user_id), None)
     if not entry:
         return False
 
     x_username = entry["x_username"]
 
     # Remove from messages
-    group_messages[gid] = [e for e in group_messages[gid] if e["user_id"] != user_id]
+    group_messages[gid] = [
+        e for e in group_messages[gid] if e["user_id"] != user_id]
 
     # If no other user is using this x_username, remove it from unique list
-    still_used = any(e["x_username"] == x_username for e in group_messages[gid])
+    still_used = any(e["x_username"] ==
+                     x_username for e in group_messages[gid])
     if not still_used and gid in unique_x_usernames:
-        unique_x_usernames[gid] = [x for x in unique_x_usernames[gid] if x != x_username]
+        unique_x_usernames[gid] = [
+            x for x in unique_x_usernames[gid] if x != x_username]
 
     # Save updates
     _set(bot_id, "group_messages", group_messages)
@@ -238,6 +260,8 @@ def delete_user_link(bot_id: str, group_id, user_id):
     return True
 
 # ---------------- Group closing & verification ----------------
+
+
 def handle_close_group(bot, bot_id: str, message):
     if not is_user_admin(bot, message.chat.id, message.from_user.id):
         msg = bot.reply_to(message, "❌ Only admins can use this command.")
@@ -283,7 +307,8 @@ def handle_close_group(bot, bot_id: str, message):
     # ✅ Stop video
     try:
         msg = bot.send_video(message.chat.id, open("gifs/stop.mp4", "rb"))
-        msg2 = bot.send_message(message.chat.id, "Time line is getting updated wait few mins.")
+        msg2 = bot.send_message(
+            message.chat.id, "Time line is getting updated wait few mins.")
         track_message(message.chat.id, msg.message_id, bot_id=bot_id)
         track_message(message.chat.id, msg2.message_id, bot_id=bot_id)
     except Exception:
@@ -342,7 +367,8 @@ def get_formatted_user_link_list(bot_id: str, group_id):
     gid = normalize_gid(group_id)
     group_messages = _get(bot_id, "group_messages", {})
 
-    grouped = defaultdict(lambda: {"x_username": None, "first_name": None, "links": []})
+    grouped = defaultdict(
+        lambda: {"x_username": None, "first_name": None, "links": []})
     for msg in group_messages.get(gid, []):
         uid = msg["user_id"]
         grouped[uid]["x_username"] = msg["x_username"]
@@ -377,7 +403,10 @@ def get_unverified_users(bot_id: str, group_id):
         number = msg["number"]
         if not msg["check"] and user_id not in seen:
             seen.add(user_id)
-            unverified_users.append(f'{number}. <a href="tg://user?id={user_id}">{msg.get("first_name", "User")}</a> 𝕏 <code>@{msg["x_username"]}</code>')
+            unverified_users.append(
+                f'{number}. 🅇 ᴵᴰ {msg["x_username"]}| ᵀᴳ '
+                f'{ "@" + msg["username"] if msg.get("username") else f"<a href=\"tg://user?id={user_id}\">{msg.get("first_name", "User")}</a>" }'
+            )
 
     return unverified_users
 
@@ -411,6 +440,8 @@ def get_unverified_users_full(bot_id: str, group_id):
     return users
 
 # ---------------- Admin Handlers ----------------
+
+
 def handle_add_to_ad_command(bot, bot_id: str, message):
     try:
         chat_id = normalize_gid(message.chat.id)
@@ -422,7 +453,8 @@ def handle_add_to_ad_command(bot, bot_id: str, message):
 
         reply_to_message = message.reply_to_message
         if not reply_to_message:
-            msg = bot.reply_to(message, "↩️ Please reply to the user's message to get their links.")
+            msg = bot.reply_to(
+                message, "↩️ Please reply to the user's message to get their links.")
             track_message(chat_id, msg.message_id, bot_id=bot_id)
             return
 
@@ -435,7 +467,8 @@ def handle_add_to_ad_command(bot, bot_id: str, message):
                 entry["check"] = True
         _set(bot_id, "group_messages", group_messages)
 
-        msg = bot.reply_to(message, f"{display_name} has been marked as AD.", parse_mode="HTML")
+        msg = bot.reply_to(
+            message, f"{display_name} has been marked as AD.", parse_mode="HTML")
         track_message(chat_id, msg.message_id, bot_id=bot_id)
 
         users = get_sr_users(bot_id, chat_id)
@@ -457,7 +490,8 @@ def handle_link_command(bot, bot_id: str, message: Message):
             return False
 
         if not message.reply_to_message:
-            msg = bot.reply_to(message, "↩️ Please reply to the user's message to get their links.")
+            msg = bot.reply_to(
+                message, "↩️ Please reply to the user's message to get their links.")
             track_message(chat_id, msg.message_id, bot_id=bot_id)
             return
 
@@ -472,12 +506,14 @@ def handle_link_command(bot, bot_id: str, message: Message):
         ]
 
         if not links:
-            msg = bot.reply_to(message, f"❌ No links found for {display_name}.", parse_mode="HTML")
+            msg = bot.reply_to(
+                message, f"❌ No links found for {display_name}.", parse_mode="HTML")
             track_message(chat_id, msg.message_id, bot_id=bot_id)
             return
 
         link_lines = "\n".join([f"{i+1}. {l}" for i, l in enumerate(links)])
-        msg = bot.reply_to(message, f"<b>🔗 Links shared by {display_name}:</b>\n{link_lines}", parse_mode="HTML")
+        msg = bot.reply_to(
+            message, f"<b>🔗 Links shared by {display_name}:</b>\n{link_lines}", parse_mode="HTML")
         track_message(chat_id, msg.message_id, bot_id=bot_id)
 
     except Exception as e:
@@ -494,7 +530,8 @@ def handle_sr_command(bot, bot_id: str, message: Message):
             return
 
         if not message.reply_to_message:
-            msg = bot.reply_to(message, "↩️ Reply to a user you want to request SR from.")
+            msg = bot.reply_to(
+                message, "↩️ Reply to a user you want to request SR from.")
             track_message(chat_id, msg.message_id, bot_id=bot_id)
             return
 
@@ -502,7 +539,8 @@ def handle_sr_command(bot, bot_id: str, message: Message):
         request_sr(bot_id, chat_id, user_id)
 
         display_name = f'<a href="tg://user?id={user_id}">{message.reply_to_message.from_user.first_name}</a>'
-        msg = bot.reply_to(message, f"Please recheck {display_name} your likes are missing and send a screen recording 'DM' Make sure your profile is visible too! with TL profile mentioned or pinned as per post", parse_mode="HTML")
+        msg = bot.reply_to(
+            message, f"Please recheck {display_name} your likes are missing and send a screen recording 'DM' Make sure your profile is visible too! with TL profile mentioned or pinned as per post", parse_mode="HTML")
         track_message(chat_id, msg.message_id, bot_id=bot_id)
 
     except Exception as e:
@@ -520,7 +558,8 @@ def handle_srlist_command(bot, bot_id: str, message: Message):
 
         sr_users = get_sr_users(bot_id, chat_id)
         if not sr_users:
-            msg = bot.reply_to(message, "✅ No users asked for screen recording.")
+            msg = bot.reply_to(
+                message, "✅ No users asked for screen recording.")
             track_message(chat_id, msg.message_id, bot_id=bot_id)
             return
 
@@ -535,25 +574,28 @@ def handle_srlist_command(bot, bot_id: str, message: Message):
                     uid = entry["user_id"]
                     num = entry["number"]
                     first_name = entry.get("first_name", "User")
-                    mentions.append(f"{num}. <a href=\"tg://user?id={uid}\">{first_name}</a>\n")
+                    mentions.append(
+                        f"{num}. <a href=\"tg://user?id={uid}\">{first_name}</a>\n")
                 seen_users.add(entry["user_id"])
 
         if not mentions:
             mentions = [f"User ID: <code>{uid}</code>" for uid in sr_users]
 
         message_text = (
-           " ⚠️ These users need to recheck and send a screen recording video"
+            " ⚠️ These users need to recheck and send a screen recording video"
             "in this group with your own X/twitter profile visible in it must ❗️\n\n"
             "If you guys ignore sending SR, you will be marked as a"
             "scammer and muted strictly from the group. 🚫🚫\n\n"
         )
         message_text += "\n".join(mentions)
 
-        msg = bot.send_message(chat_id, message_text, parse_mode="HTML", disable_web_page_preview=True)
+        msg = bot.send_message(chat_id, message_text,
+                               parse_mode="HTML", disable_web_page_preview=True)
         track_message(chat_id, msg.message_id, bot_id=bot_id)
 
     except Exception as e:
         notify_dev(bot, e, "handle_srlist_command", message)
+
 
 def handle_done_keywords(bot, bot_id: str, message: Message, group_id):
     try:
@@ -563,13 +605,17 @@ def handle_done_keywords(bot, bot_id: str, message: Message, group_id):
             x_username, status = mark_user_verified(bot_id, group_id, user.id)
             mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
             if status == "verified":
-                msg = bot.reply_to(message, f"{mention}'s X account: {x_username}.", parse_mode="HTML")
+                msg = bot.reply_to(
+                    message, f"{mention}'s X account: {x_username}.", parse_mode="HTML")
             elif status == "already_verified":
-                msg = bot.send_message(message.chat.id, f"⚠️ {mention} is already verified.", parse_mode="HTML")
+                msg = bot.send_message(
+                    message.chat.id, f"⚠️ {mention} is already verified.", parse_mode="HTML")
             elif status == "no_messages":
-                msg = bot.send_message(message.chat.id, f"⚠️ {mention} hasn't sent any links.", parse_mode="HTML")
+                msg = bot.send_message(
+                    message.chat.id, f"⚠️ {mention} hasn't sent any links.", parse_mode="HTML")
             else:
-                msg = bot.send_message(message.chat.id, f"⚠️ Unknown error or group not found.", parse_mode="HTML")
+                msg = bot.send_message(
+                    message.chat.id, f"⚠️ Unknown error or group not found.", parse_mode="HTML")
             track_message(message.chat.id, msg.message_id, bot_id=bot_id)
     except Exception as e:
         notify_dev(bot, e, "handle_done_keywords", message)
