@@ -77,7 +77,7 @@ def handle_group_text(bot, bot_id: str, message: Message, db):
                     message,
                     group_id,
                     user.id,
-                    user.username or user.first_name,
+                    user.username,
                     link_or_content,
                     None,
                     user.first_name

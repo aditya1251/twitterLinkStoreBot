@@ -1,5 +1,6 @@
 import json
 from telebot.types import Message, ChatPermissions
+from telebot import types
 from utils.message_tracker import track_message
 from handlers.admin import notify_dev
 from config import settings
@@ -410,6 +411,30 @@ def get_unverified_users(bot_id: str, group_id):
 
     return unverified_users
 
+
+def notify_unverified_users(bot, bot_id: str, group_id: int):
+    """
+    Sends personal DM to unverified users with a 'Verify Now' button linking back to the group.
+    """
+    gid = normalize_gid(group_id)
+    unverified = get_unverified_users_full(bot_id, gid)
+    
+    keyboard = types.InlineKeyboardMarkup()
+    group_link = f"https://t.me/c/{gid[4:]}"  # works for supergroups
+    verify_button = types.InlineKeyboardButton("✅ Verify Now", url=group_link)
+    keyboard.add(verify_button)
+
+    for msg in unverified:
+        user_id = msg["user_id"]
+        try:
+            warning_text = (
+                "⚠️ You have not completed the verification in the group.\n\n"
+                "Please return to the group and send 'ad' or 'all done' to finish verification."
+            )
+            bot.send_message(user_id, warning_text, reply_markup=keyboard)
+        except Exception as e:
+            # User hasn’t started bot or blocked it
+            pass
 
 def get_all_links_count(bot_id: str, group_id):
     gid = normalize_gid(group_id)

@@ -11,6 +11,7 @@ from utils.group_session import (
     get_unverified_users,
     get_unverified_users_full,
     set_verification_phase,
+    notify_unverified_users,
     get_all_links_count,
     handle_close_group,
     delete_user_link,
@@ -296,6 +297,8 @@ def handle_group_command(bot, bot_id: str, message, db):
                 if chunk:
                     msg = bot.send_message(chat_id, chunk, parse_mode="HTML")
                     track_message(chat_id, msg.message_id, bot_id=bot_id)
+
+                notify_unverified_users(bot, bot_id, chat_id)
 
             except Exception as e:
                 notify_dev(bot, e, "/unsafe", message)
