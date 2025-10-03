@@ -412,7 +412,7 @@ def get_unverified_users(bot_id: str, group_id):
 
     return unverified_users
 
-def notify_unverified_users(bot, bot_id: str, group_id: int):
+def notify_unverified_users(bot, bot_id: str, group_id: int, msg_id: int = None):
     """
     Sends personal DM to unverified users with a 'Verify Now' button linking back to the group.
     Handles Telegram rate limits.
@@ -426,7 +426,7 @@ def notify_unverified_users(bot, bot_id: str, group_id: int):
         return "allSafe"
 
     # Inline button back to group
-    group_link = f"https://t.me/c/{gid[4:]}"  # works for supergroups (private links need invite link)
+    group_link = f"https://t.me/c/{gid[4:]}/{msg_id}"
     keyboard = types.InlineKeyboardMarkup()
     verify_button = types.InlineKeyboardButton("✅ Verify Now", url=group_link)
     keyboard.add(verify_button)
