@@ -6,7 +6,8 @@ from handlers.admin import notify_dev
 from config import settings
 from utils.telegram import is_user_admin
 from utils.redis_client import get_redis
-
+from telebot.apihelper import ApiTelegramException
+import time
 ADMIN_IDS = settings.ADMIN_IDS
 
 # === Redis Connection ===
@@ -411,16 +412,22 @@ def get_unverified_users(bot_id: str, group_id):
 
     return unverified_users
 
-
 def notify_unverified_users(bot, bot_id: str, group_id: int):
     """
     Sends personal DM to unverified users with a 'Verify Now' button linking back to the group.
+    Handles Telegram rate limits.
     """
     gid = normalize_gid(group_id)
     unverified = get_unverified_users_full(bot_id, gid)
-    
+
+    if unverified == "notVerifyingphase":
+        return "notVerifyingphase"
+    if not unverified:
+        return "allSafe"
+
+    # Inline button back to group
+    group_link = f"https://t.me/c/{gid[4:]}"  # works for supergroups (private links need invite link)
     keyboard = types.InlineKeyboardMarkup()
-    group_link = f"https://t.me/c/{gid[4:]}"  # works for supergroups
     verify_button = types.InlineKeyboardButton("✅ Verify Now", url=group_link)
     keyboard.add(verify_button)
 
@@ -432,9 +439,26 @@ def notify_unverified_users(bot, bot_id: str, group_id: int):
                 "Please return to the group and send 'ad' or 'all done' to finish verification."
             )
             bot.send_message(user_id, warning_text, reply_markup=keyboard)
-        except Exception as e:
-            # User hasn’t started bot or blocked it
+            time.sleep(1)  # ⏳ safe delay to avoid flood (1s per user)
+        except ApiTelegramException as e:
+            if "Too Many Requests" in str(e):
+                # Extract retry time if provided
+                retry_after = getattr(e.result_json, "parameters", {}).get("retry_after", 5)
+                print(f"⏳ Flood wait triggered, sleeping for {retry_after} seconds")
+                time.sleep(retry_after)
+                # retry once
+                try:
+                    bot.send_message(user_id, warning_text, reply_markup=keyboard)
+                except Exception:
+                    pass
+            else:
+                # user hasn’t started bot / blocked it
+                pass
+        except Exception:
+            # other unexpected errors
             pass
+
+    return "done"
 
 def get_all_links_count(bot_id: str, group_id):
     gid = normalize_gid(group_id)
