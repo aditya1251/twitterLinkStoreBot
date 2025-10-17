@@ -59,7 +59,7 @@ def handle_start_group(bot, bot_id: str, message: Message):
                 notify_dev(bot, e, "start_group: send start.mp4", message)
 
             try:
-                msg = bot.send_message(chat_id, "🚀 Start dropping your links!")
+                msg = bot.send_message(chat_id, "🚀 🚀 Slot Open \n✅ Start dropping your links!")
                 bot.pin_chat_message(chat_id, msg.message_id)
                 track_message(chat_id, msg.message_id, bot_id=bot_id)
             except Exception as e:
