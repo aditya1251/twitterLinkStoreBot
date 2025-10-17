@@ -325,12 +325,12 @@ def handle_group_command(bot, bot_id: str, message, db):
                 track_message(chat_id, msg.message_id, bot_id=bot_id)
             except Exception as e:
                 notify_dev(bot, e, "/delLink", message)
-
         elif text.startswith("/muteunsafe") or text.startswith("/muteall"):
             if not is_user_admin(bot, chat_id, user_id):
                 msg = bot.send_message(chat_id, "❌ Only admins can use this command.")
                 track_message(chat_id, msg.message_id, bot_id=bot_id)
                 return
+
             try:
                 args = text.split(maxsplit=1)
                 duration = parse_duration(args[1]) if len(args) > 1 else timedelta(days=3)
@@ -339,7 +339,7 @@ def handle_group_command(bot, bot_id: str, message, db):
                     track_message(chat_id, msg.message_id, bot_id=bot_id)
                     return
 
-                unverified = get_unverified_users_full(bot_id,chat_id)
+                unverified = get_unverified_users_full(bot_id, chat_id)
                 if unverified == "notVerifyingphase":
                     msg = bot.send_message(chat_id, "⚠️ This session is not in the verifying phase.")
                     track_message(chat_id, msg.message_id, bot_id=bot_id)
@@ -350,22 +350,27 @@ def handle_group_command(bot, bot_id: str, message, db):
                     track_message(chat_id, msg.message_id, bot_id=bot_id)
                     return
 
-                success_log, failed = [], []
+                # Mute users
+                muted_count = 0
                 for user in unverified:
                     uid = user["user_id"]
-                    fname = user.get("first_name", "User")
                     if mute_user(bot, chat_id, uid, duration):
-                        mention = f'<a href="tg://user?id={uid}">{fname}</a>'
-                        success_log.append(f"• {mention} (ID: <code>{uid}</code>)")
-                    else:
-                        failed.append(fname)
+                        muted_count += 1
 
-                msg_text = "<b>🔇 Muted the following unSafe users:</b>\n\n" + "\n".join(success_log)
-                if failed:
-                    msg_text += "\n\n⚠️ <b>Failed to mute:</b>\n" + "\n".join(f"• {u}" for u in failed)
+                # Convert duration to a readable format (e.g., "48 hours" or "3 days")
+                total_seconds = int(duration.total_seconds())
+                hours = total_seconds // 3600
+                days = hours // 24
 
-                msg = bot.send_message(chat_id, msg_text, parse_mode="HTML")
+                if days >= 1:
+                    duration_str = f"{days} day{'s' if days > 1 else ''}"
+                else:
+                    duration_str = f"{hours} hour{'s' if hours != 1 else ''}"
+
+                msg_text = f"✅ Muted {muted_count} unsafe user{'s' if muted_count != 1 else ''} for {duration_str}."
+                msg = bot.send_message(chat_id, msg_text)
                 track_message(chat_id, msg.message_id, bot_id=bot_id)
+
             except Exception as e:
                 notify_dev(bot, e, "/muteunsafe", message)
 

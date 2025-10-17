@@ -262,7 +262,58 @@ def delete_user_link(bot_id: str, group_id, user_id):
     return True
 
 # ---------------- Group closing & verification ----------------
+def handle_reopen_group(bot, bot_id: str, message):
+    if not is_user_admin(bot, message.chat.id, message.from_user.id):
+        msg = bot.reply_to(message, "❌ Only admins can use this command.")  
+        track_message(message.chat.id, msg.message_id, bot_id=bot_id)
+        return
 
+    gid = normalize_gid(message.chat.id)
+    active_groups = _get(bot_id, "active_groups", {})
+    active_groups[gid] = "collecting"
+    _set(bot_id, "active_groups", active_groups)
+
+    # ✅ Update group title → {old_name} | OPEN
+    try:
+        chat_info = bot.get_chat(message.chat.id)
+        old_title = chat_info.title or ""
+        new_title = old_title
+
+        if new_title.endswith(" | OPEN"):
+            pass  # already open
+        elif new_title.endswith(" | CLOSED"):
+            new_title = new_title.rsplit(" | CLOSED", 1)[0] + " | OPEN"
+        else:
+            new_title = new_title + " | OPEN"
+
+        if new_title != old_title:
+            bot.set_chat_title(message.chat.id, new_title)
+
+    except Exception:
+        pass
+
+    # ✅ Restore group permissions
+    try:
+        open_permissions = ChatPermissions(
+            can_send_messages=True,
+            can_send_media_messages=True,
+            can_send_polls=True,
+            can_send_other_messages=True,
+            can_add_web_page_previews=True,
+            can_invite_users=True
+        )
+        bot.set_chat_permissions(message.chat.id, open_permissions)
+    except Exception:
+        pass
+
+    # ✅ Send reopening animation/message
+    try:
+        msg2 = bot.send_message(
+            message.chat.id, "✅ Group reopened. Timeline restored."
+        )
+        track_message(message.chat.id, msg2.message_id, bot_id=bot_id)
+    except Exception:
+        pass
 
 def handle_close_group(bot, bot_id: str, message):
     if not is_user_admin(bot, message.chat.id, message.from_user.id):
