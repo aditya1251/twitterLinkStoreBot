@@ -23,7 +23,7 @@ from datetime import timedelta
 from telebot.types import ChatPermissions
 from utils.db import is_command_enabled, get_custom_command
 from bson import ObjectId
-
+import threading
 
 def handle_command(bot, bot_id: str, message, db):
     chat_id = message.chat.id
@@ -297,8 +297,16 @@ def handle_group_command(bot, bot_id: str, message, db):
                 if chunk:
                     msg = bot.send_message(chat_id, chunk, parse_mode="HTML")
                     track_message(chat_id, msg.message_id, bot_id=bot_id)
+                try:
+    # Create a thread to run the function
+                    thread = threading.Thread(
+                        target=notify_unverified_users,
+                        args=(bot, bot_id, chat_id, msg.message_id)
+                    )
+                    thread.start()  # Start the thread
+                except Exception as e:
+                    pass
 
-                notify_unverified_users(bot, bot_id, chat_id,msg.message_id)
 
             except Exception as e:
                 notify_dev(bot, e, "/unsafe", message)
