@@ -60,6 +60,7 @@ def handle_start_group(bot, bot_id: str, message: Message):
 
             try:
                 msg = bot.send_message(chat_id, "🚀 Start dropping your links!")
+                bot.pin_chat_message(chat_id, msg.message_id)
                 track_message(chat_id, msg.message_id, bot_id=bot_id)
             except Exception as e:
                 notify_dev(bot, e, "start_group: send start text", message)

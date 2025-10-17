@@ -14,6 +14,7 @@ from utils.group_session import (
     notify_unverified_users,
     get_all_links_count,
     handle_close_group,
+    handle_reopen_group,
     delete_user_link,
     get_formatted_user_link_list
 )
@@ -74,6 +75,7 @@ def handle_command(bot, bot_id: str, message, db):
                     "/sr — (Reply) Ask a user to submit screen recording in DM\n"
                     "/srlist — List users asked to submit screen recordings\n"
                     "/close — Close the current group session\n"
+                    "/reopen — Reopen the last closed group session\n"
                     "/end — End the current group session\n"
                     "/add_to_ad — Add user to ad list\n"
                     "/rule — Show group rules for like sessions\n"
@@ -134,7 +136,11 @@ def handle_group_command(bot, bot_id: str, message, db):
                 handle_close_group(bot,bot_id, message)
             except Exception as e:
                 notify_dev(bot, e, "/close", message)
-
+        elif text == "/reopen":
+            try:
+                handle_reopen_group(bot,bot_id, message)
+            except Exception as e:
+                notify_dev(bot, e, "/reopen", message)
         elif text == "/end":
             try:
                 start.handle_cancel_group(bot,bot_id, message, db)
