@@ -309,7 +309,7 @@ def handle_reopen_group(bot, bot_id: str, message):
     # ✅ Send reopening animation/message
     try:
         msg2 = bot.send_message(
-            message.chat.id, "✅ Group reopened. Timeline restored."
+            message.chat.id, "✅ Group reopened."
         )
         track_message(message.chat.id, msg2.message_id, bot_id=bot_id)
     except Exception:
