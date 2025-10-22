@@ -1,21 +1,18 @@
 from telebot.types import (
     Update, Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 )
-from config import settings
-from utils import db
-from bson.objectid import ObjectId
-from utils.telegram import manager
-import re
 from telebot.apihelper import ApiTelegramException
+from bson.objectid import ObjectId
+from config import settings
+from utils import db, wizard_state
 from utils.db import ALL_MAIN_COMMANDS, get_bot_commands
+from utils.telegram import manager
 from handlers.admin import notify_dev
+import re
 
-
+# === CONSTANTS ===
 TOKEN_PATTERN = re.compile(r"^\d+:[A-Za-z0-9_-]+$")
-
-from utils import wizard_state
-
-BOTS_PER_PAGE = 5  # how many bots per page
+BOTS_PER_PAGE = 5  # Number of bots shown per page
 
 
 # === SAFE EDIT WRAPPER ===
@@ -30,7 +27,6 @@ def safe_edit(chat_id, message_id, text, reply_markup=None, parse_mode="Markdown
         )
     except ApiTelegramException as e:
         if "message is not modified" in str(e):
-            # ignore harmless error
             return
         else:
             raise
@@ -38,23 +34,24 @@ def safe_edit(chat_id, message_id, text, reply_markup=None, parse_mode="Markdown
 
 # === MAIN MENU ===
 def show_main_menu(chat_id, message_id=None):
-    kb = InlineKeyboardMarkup()
+    kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
         InlineKeyboardButton("➕ Add Bot", callback_data="cmd_addbot"),
         InlineKeyboardButton("📋 List Bots", callback_data="cmd_listbots:0"),
     )
     kb.add(InlineKeyboardButton("ℹ️ Help", callback_data="cmd_help"))
 
-    text = "👋 *Admin Dashboard*\n\nSelect an action below:"
+    text = (
+        "👋 *Admin Dashboard*\n\n"
+        "Welcome to your control panel. Choose an action below:"
+    )
     if message_id:
         safe_edit(chat_id, message_id, text, kb)
     else:
-        manager.admin_bot.send_message(
-            chat_id, text, parse_mode="Markdown", reply_markup=kb
-        )
+        manager.admin_bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
 
 
-# === ENTRYPOINT ===
+# === HANDLE ADMIN UPDATE ===
 def handle_admin_update(update: Update):
     if update.callback_query:
         return handle_admin_callback(update.callback_query)
@@ -63,62 +60,55 @@ def handle_admin_update(update: Update):
         return
 
     message: Message = update.message
-    text = message.text or ""
+    text = message.text.strip() if message.text else ""
 
     if message.from_user.id != settings.ADMIN_TELEGRAM_USER_ID:
         manager.admin_bot.reply_to(message, "❌ Not authorized.")
         return
 
-    # Handle wizard "waiting for token"
+    # Handle add bot wizard
     chat_id = wizard_state.pop_pending_add_token(message.from_user.id)
     if chat_id:
-         token = text.strip()
-         return process_new_bot_token(message, token)
-    
+        return process_new_bot_token(message, text)
+
     user_id = message.from_user.id
     chat_id = message.chat.id
-    text = message.text.strip()
 
+    # Handle custom commands and verification text
     try:
-        if message.chat.type == "private":
-            action = wizard_state.pop_pending_action(user_id)
-            if action:
-                if action.startswith("addcustom:"):
-                    _, bid, page = action.split(":")
-                    # Step 1: save command, ask for reply text
-                    wizard_state.set_pending_action(user_id, f"addcustomreply:{bid}:/{text}:{page}")
-                    manager.admin_bot.send_message(chat_id, f"📩 Now send the *reply text* for command /{text}", parse_mode="Markdown")
-                    return
-                elif action.startswith("addcustomreply:"):
-                    _, bid, command, page = action.split(":")
-                    reply_text = text
-                    db.set_bot_custom_command(bid, command, reply_text)
-                    manager.admin_bot.send_message(chat_id, f"✅ Custom command {command} saved.")
-                    return
-                elif action.startswith("addverifytext:"):
-                    _, bid, page = action.split(":")
-                    verify_text = text
-                    db.set_bot_verification_text(bid, verify_text)
-                    manager.admin_bot.send_message(chat_id, "✅ Verification text saved.")
-                    return
+        action = wizard_state.pop_pending_action(user_id)
+        if action:
+            if action.startswith("addcustom:"):
+                _, bid, page = action.split(":")
+                wizard_state.set_pending_action(user_id, f"addcustomreply:{bid}:/{text}:{page}")
+                manager.admin_bot.send_message(chat_id, f"📩 Now send the *reply text* for command /{text}", parse_mode="Markdown")
+                return
 
+            elif action.startswith("addcustomreply:"):
+                _, bid, command, page = action.split(":")
+                db.set_bot_custom_command(bid, command, text)
+                manager.admin_bot.send_message(chat_id, f"✅ Custom command {command} saved.")
+                return
+
+            elif action.startswith("addverifytext:"):
+                _, bid, page = action.split(":")
+                db.set_bot_verification_text(bid, text)
+                manager.admin_bot.send_message(chat_id, "✅ Verification text saved.")
+                return
     except Exception as e:
         notify_dev(manager.admin_bot, e, "handle_admin_callback: custom command", message)
-    
+
     bid = wizard_state.pop_pending_rules(message.from_user.id)
     if bid:
-       return process_new_rule(message, bid)
+        return process_new_rule(message, bid)
 
+    # Handle /start
     if text.startswith("/start"):
-        if message.from_user.id in settings.ADMIN_IDS:
-            show_main_menu(message.chat.id)
-        else:
-            manager.admin_bot.reply_to(message, "❌ Not authorized.")
+        show_main_menu(chat_id)
 
 
 # === CALLBACK HANDLER ===
 def handle_admin_callback(call: CallbackQuery):
-
     try:
         if call.from_user.id != settings.ADMIN_TELEGRAM_USER_ID:
             manager.admin_bot.answer_callback_query(call.id, "❌ Not authorized.")
@@ -126,166 +116,172 @@ def handle_admin_callback(call: CallbackQuery):
 
         cmd = call.data
 
+        # Help
         if cmd == "cmd_help":
             help_text = (
                 "🤖 *Admin Bot Help*\n\n"
-                "➕ Add Bot — Register a new child bot\n"
-                "📋 List Bots — Show all child bots\n"
-                "▶️ Enable Bot — Enable bot & set webhook\n"
-                "⏸️ Disable Bot — Disable bot\n"
-                "🗑️ Remove Bot — Delete bot\n"
+                "• ➕ Add Bot — Register a new child bot\n"
+                "• 📋 List Bots — Show all bots\n"
+                "• ▶️ Enable Bot — Activate webhook\n"
+                "• ⏸️ Disable Bot — Stop bot\n"
+                "• 🗑️ Remove Bot — Delete permanently"
             )
-            safe_edit(call.message.chat.id, call.message.message_id,
-                    help_text, back_btn())
+            safe_edit(call.message.chat.id, call.message.message_id, help_text, back_btn())
+            return
 
-        elif cmd == "cmd_addbot":
+        # Add bot
+        if cmd == "cmd_addbot":
             wizard_state.set_pending_add_token(call.from_user.id, call.message.chat.id)
-            safe_edit(
-                call.message.chat.id,
-                call.message.message_id,
-                "➕ Please send me the *bot token* now:",
-                back_btn(),
-            )
+            safe_edit(call.message.chat.id, call.message.message_id, "➕ Please send me the *bot token* now:", back_btn())
+            return
 
-        elif cmd.startswith("cmd_listbots:") or cmd.startswith("page:"):
+        # List bots & pagination
+        if cmd.startswith(("cmd_listbots:", "page:", "listpage:")):
             page = int(cmd.split(":")[1])
             show_bot_list(call.message.chat.id, call.message.message_id, page)
+            return
 
-        elif cmd.startswith("listpage:"):
-            _, page = cmd.split(":")
-            show_bot_list(call.message.chat.id, call.message.message_id, int(page))
-
-        elif cmd.startswith("info:"):
+        # Info, enable, disable, remove
+        if cmd.startswith("info:"):
             _, bid, page = cmd.split(":")
             show_bot_info(call, bid, int(page))
+            return
 
-        elif cmd.startswith("enable:"):
+        if cmd.startswith("enable:"):
             _, bid, page = cmd.split(":")
             enable_bot(call, bid, int(page))
+            return
 
-        elif cmd.startswith("disable:"):
+        if cmd.startswith("disable:"):
             _, bid, page = cmd.split(":")
             disable_bot(call, bid, int(page))
+            return
 
-        elif cmd.startswith("remove:"):
+        if cmd.startswith("remove:"):
             _, bid, page = cmd.split(":")
             remove_bot(call, bid, int(page))
+            return
 
-        elif cmd == "back_main":
-            show_main_menu(call.message.chat.id, call.message.message_id)
-        elif cmd.startswith("commands:"):
+        # Commands / Rules / Custom / Verify Text
+        if cmd.startswith("commands:"):
             _, bid, page = cmd.split(":")
             show_bot_commands(call, bid, int(page))
+            return
 
-        elif cmd.startswith("togglecmd:"):
+        if cmd.startswith("togglecmd:"):
             _, bid, command, page = cmd.split(":")
             enabled = set(db.get_bot_commands(bid))
-            if command in enabled:
-                enabled.remove(command)
-            else:
-                enabled.add(command)
+            enabled.remove(command) if command in enabled else enabled.add(command)
             db.set_bot_commands(bid, list(enabled))
             show_bot_commands(call, bid, int(page))
-        elif cmd.startswith("rules:"):
+            return
+
+        if cmd.startswith("rules:"):
             _, bid, page = cmd.split(":")
             show_bot_rules(call, bid, int(page))
-        elif cmd.startswith("newrules:"):
+            return
+
+        if cmd.startswith("newrules:"):
             _, bid, page = cmd.split(":")
             set_bot_rules(call, bid, int(page))
-        elif cmd.startswith("verifytext:"):
+            return
+
+        if cmd.startswith("verifytext:"):
             _, bid, page = cmd.split(":")
             show_bot_verification_text(call, bid, int(page))
-        elif cmd.startswith("newverifytext:"):
+            return
+
+        if cmd.startswith("newverifytext:"):
             _, bid, page = cmd.split(":")
             set_bot_verification_text(call, bid, int(page))
+            return
 
-        elif cmd.startswith("customcmds:"):
+        if cmd.startswith("customcmds:"):
             _, bid, page = cmd.split(":")
             show_custom_commands(call, bid, int(page))
-        elif cmd.startswith("newcustom:"):
+            return
+
+        if cmd.startswith("newcustom:"):
             _, bid, page = cmd.split(":")
             ask_new_custom_command(call, bid, int(page))
-        elif cmd.startswith("delcustom:"):
+            return
+
+        if cmd.startswith("delcustom:"):
             _, bid, command, page = cmd.split(":")
-            from utils import db
             db.delete_custom_command(bid, command)
             show_custom_commands(call, bid, int(page))
+            return
 
+        if cmd == "back_main":
+            show_main_menu(call.message.chat.id, call.message.message_id)
+            return
 
-        else:
-            manager.admin_bot.answer_callback_query(call.id, "❓ Unknown action.")
-
-        manager.admin_bot.answer_callback_query(call.id)
+        manager.admin_bot.answer_callback_query(call.id, "❓ Unknown action.")
     except Exception as e:
-        pass
+        notify_dev(manager.admin_bot, e, "handle_admin_callback", call.message)
 
 
-def escape_markdown(text: str) -> str:
-    # Escape characters that Telegram MarkdownV2 treats specially
-    return text.replace("_", "\\_").replace("*", "\\*").replace("[", "\\]").replace("`", "\\`")
+# === HELPERS ===
+def back_btn():
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("⬅️ Back", callback_data="back_main"))
+    return kb
 
 
-# === BOT LIST ===
+def escape_md(text: str) -> str:
+    return re.sub(r"([_*\[\]()~`>#+\-=|{}.!])", r"\\\1", text)
+
+
+# === BOT LIST (visual improvement) ===
 def show_bot_list(chat_id, message_id, page=0):
-    docs = db.list_bots()
-    total = len(docs)
-
-    if total == 0:
+    bots = db.list_bots()
+    total = len(bots)
+    if not bots:
         safe_edit(chat_id, message_id, "ℹ️ No child bots yet.", back_btn())
         return
 
-    # paginate
-    start = page * BOTS_PER_PAGE
-    end = start + BOTS_PER_PAGE
-    docs_page = docs[start:end]
+    start, end = page * BOTS_PER_PAGE, (page + 1) * BOTS_PER_PAGE
+    bots_page = bots[start:end]
+    total_pages = (total - 1) // BOTS_PER_PAGE + 1
 
-    text = f"📋 *Child Bots Panel* (page {page+1}/{(total-1)//BOTS_PER_PAGE+1})\n\n"
+    text = f"📋 *Child Bots Panel* (Page {page+1}/{total_pages})\n\n"
 
-    text += "\n".join(
-        f"🤖 @{escape_markdown(d.get('name') or 'Unnamed')} ({d.get('status', 'unknown')})"
-        for d in docs_page
-    )
+    kb = InlineKeyboardMarkup(row_width=3)
 
-    kb = InlineKeyboardMarkup(row_width=1)
+    for bot in bots_page:
+        bid = str(bot["_id"])
+        name = bot.get("name") or "Unnamed"
+        status = bot.get("status", "unknown")
+        icon = "🟢" if status == "enabled" else "🔴"
 
-    for d in docs_page:
-        bid = str(d["_id"])
-        status = d.get("status", "unknown")
-        name = d.get("name") or "Unnamed"
+        text += f"{icon} [@{escape_md(name)}](https://t.me/{name}) — *{status.capitalize()}*\n"
 
-        kb.add(InlineKeyboardButton(
-            f"🤖 {name} ({status})", callback_data=f"info:{bid}:{page}"))
+        # Button groups
+        kb.row(
+            InlineKeyboardButton("⚙️ Commands", callback_data=f"commands:{bid}:{page}"),
+            InlineKeyboardButton("📜 Rules", callback_data=f"rules:{bid}:{page}"),
+            InlineKeyboardButton("📝 Custom Cmds", callback_data=f"customcmds:{bid}:{page}")
+        )
+        kb.row(
+            InlineKeyboardButton("🛡 Verify Text", callback_data=f"verifytext:{bid}:{page}"),
+            InlineKeyboardButton(
+                "⏸ Disable" if status == "enabled" else "▶️ Enable",
+                callback_data=f"{'disable' if status=='enabled' else 'enable'}:{bid}:{page}"
+            ),
+            InlineKeyboardButton("🗑 Remove", callback_data=f"remove:{bid}:{page}")
+        )
+        kb.row(InlineKeyboardButton("—", callback_data="none_sep"))  # visual divider
 
-        row = []
-        if status == "enabled":
-            row.append(InlineKeyboardButton(
-                "⏸️ Disable", callback_data=f"disable:{bid}:{page}"))
-        else:
-            row.append(InlineKeyboardButton(
-                "▶️ Enable", callback_data=f"enable:{bid}:{page}"))
-        row.append(InlineKeyboardButton(
-            "🗑️ Remove", callback_data=f"remove:{bid}:{page}"))
-        row.append(InlineKeyboardButton("⚙️ Commands",
-                   callback_data=f"commands:{bid}:{page}"))
-        
-        row.append(InlineKeyboardButton("📋 Rules",
-                   callback_data=f"rules:{bid}:{page}"))
-        row.append(InlineKeyboardButton("📝 Custom Cmds", callback_data=f"customcmds:{bid}:{page}"))
-        row.append(InlineKeyboardButton("🛡 Verify Text", callback_data=f"verifytext:{bid}:{page}"))
-        kb.row(*row)
-
-    nav_row = []
+    # Pagination
+    nav = []
     if page > 0:
-        nav_row.append(InlineKeyboardButton(
-            "⬅️ Prev", callback_data=f"page:{page-1}"))
+        nav.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"page:{page-1}"))
     if end < total:
-        nav_row.append(InlineKeyboardButton(
-            "➡️ Next", callback_data=f"page:{page+1}"))
-    if nav_row:
-        kb.row(*nav_row)
+        nav.append(InlineKeyboardButton("➡️ Next", callback_data=f"page:{page+1}"))
+    if nav:
+        kb.row(*nav)
 
     kb.add(InlineKeyboardButton("⬅️ Back", callback_data="back_main"))
-
     safe_edit(chat_id, message_id, text, kb)
 
 
