@@ -195,7 +195,7 @@ def handle_admin_callback(call: CallbackQuery):
             _, bid, page = cmd.split(":")
             set_bot_verification_text(call, bid, int(page))
             return
-
+        
         if cmd.startswith("customcmds:"):
             _, bid, page = cmd.split(":")
             show_custom_commands(call, bid, int(page))
@@ -210,6 +210,10 @@ def handle_admin_callback(call: CallbackQuery):
             _, bid, command, page = cmd.split(":")
             db.delete_custom_command(bid, command)
             show_custom_commands(call, bid, int(page))
+            return
+        if cmd.startswith("manage:"):
+            _, bid, page = cmd.split(":")
+            show_bot_manage_panel(call, bid, int(page))
             return
 
         if cmd == "back_main":
@@ -245,32 +249,15 @@ def show_bot_list(chat_id, message_id, page=0):
     total_pages = (total - 1) // BOTS_PER_PAGE + 1
 
     text = f"📋 *Child Bots Panel* (Page {page+1}/{total_pages})\n\n"
-
-    kb = InlineKeyboardMarkup(row_width=3)
+    kb = InlineKeyboardMarkup(row_width=1)
 
     for bot in bots_page:
         bid = str(bot["_id"])
         name = bot.get("name") or "Unnamed"
         status = bot.get("status", "unknown")
         icon = "🟢" if status == "enabled" else "🔴"
-
-        text += f"{icon} [@{escape_md(name)}](https://t.me/{name}) — *{status.capitalize()}*\n"
-
-        # Button groups
-        kb.row(
-            InlineKeyboardButton("⚙️ Commands", callback_data=f"commands:{bid}:{page}"),
-            InlineKeyboardButton("📜 Rules", callback_data=f"rules:{bid}:{page}"),
-            InlineKeyboardButton("📝 Custom Cmds", callback_data=f"customcmds:{bid}:{page}")
-        )
-        kb.row(
-            InlineKeyboardButton("🛡 Verify Text", callback_data=f"verifytext:{bid}:{page}"),
-            InlineKeyboardButton(
-                "⏸ Disable" if status == "enabled" else "▶️ Enable",
-                callback_data=f"{'disable' if status=='enabled' else 'enable'}:{bid}:{page}"
-            ),
-            InlineKeyboardButton("🗑 Remove", callback_data=f"remove:{bid}:{page}")
-        )
-        kb.row(InlineKeyboardButton("—", callback_data="none_sep"))  # visual divider
+        text += f"{icon} [@{escape_md(name)}](https://t.me/{name}) — *{status}*\n"
+        kb.add(InlineKeyboardButton(f"🧩 Manage {name}", callback_data=f"manage:{bid}:{page}"))
 
     # Pagination
     nav = []
@@ -283,6 +270,42 @@ def show_bot_list(chat_id, message_id, page=0):
 
     kb.add(InlineKeyboardButton("⬅️ Back", callback_data="back_main"))
     safe_edit(chat_id, message_id, text, kb)
+
+
+def show_bot_manage_panel(call: CallbackQuery, bid: str, page: int):
+    bot = db.get_bot_by_id(bid)
+    if not bot:
+        manager.admin_bot.answer_callback_query(call.id, "❌ Bot not found.")
+        return
+
+    name = bot.get("name") or "Unnamed"
+    status = bot.get("status", "unknown")
+    icon = "🟢" if status == "enabled" else "🔴"
+
+    text = (
+        f"🧩 *Manage Bot: @{escape_md(name)}*\n\n"
+        f"📡 Status: {icon} *{status}*\n"
+    )
+
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("⚙️ Commands", callback_data=f"commands:{bid}:{page}"),
+        InlineKeyboardButton("📜 Rules", callback_data=f"rules:{bid}:{page}")
+    )
+    kb.add(
+        InlineKeyboardButton("📝 Custom Cmds", callback_data=f"customcmds:{bid}:{page}"),
+        InlineKeyboardButton("🛡 Verify Text", callback_data=f"verifytext:{bid}:{page}")
+    )
+    kb.row(
+        InlineKeyboardButton(
+            "⏸ Disable" if status == "enabled" else "▶️ Enable",
+            callback_data=f"{'disable' if status=='enabled' else 'enable'}:{bid}:{page}"
+        ),
+        InlineKeyboardButton("🗑 Remove", callback_data=f"remove:{bid}:{page}")
+    )
+    kb.add(InlineKeyboardButton("⬅️ Back to List", callback_data=f"listpage:{page}"))
+
+    safe_edit(call.message.chat.id, call.message.message_id, text, kb)
 
 
 # === BOT INFO ===
