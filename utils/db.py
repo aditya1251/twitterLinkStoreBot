@@ -185,3 +185,34 @@ def delete_custom_command(bot_id: str, command: str):
         {"_id": f"customcmds:{bot_id}"},
         {"$unset": {f"commands.{command}": ""}}
     )
+
+# === Custom Verification Text ===
+def set_bot_verification_text(bot_id: str, text: str):
+    """
+    Set or update a custom verification text for a specific bot.
+    """
+    db = init_db()
+    db["settings"].update_one(
+        {"_id": f"verifytext:{bot_id}"},
+        {"$set": {"text": text.strip()}},
+        upsert=True
+    )
+    return text.strip()
+
+
+def get_bot_verification_text(bot_id: str) -> str | None:
+    """
+    Retrieve the custom verification text for a specific bot.
+    Returns None if not set.
+    """
+    db = init_db()
+    doc = db["settings"].find_one({"_id": f"verifytext:{bot_id}"})
+    return doc.get("text") if doc else None
+
+
+def delete_bot_verification_text(bot_id: str):
+    """
+    Delete the custom verification text for a specific bot.
+    """
+    db = init_db()
+    db["settings"].delete_one({"_id": f"verifytext:{bot_id}"})

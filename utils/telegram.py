@@ -3,35 +3,81 @@ from datetime import datetime, timedelta
 from telebot import apihelper
 import telebot.types
 import re
-from handlers.admin import notify_dev  # ✅ import notify_dev
+from handlers.admin import notify_dev
+import json
+from utils.redis_client import get_redis
 
 _admins_cache = {}
 _lock = Lock()
+_CACHE_TTL = 300  # 5 minutes
 
 def normalize_gid(chat_id):
     return str(chat_id)
 
+def _redis_key(chat_id):
+    return f"admins_cache:{normalize_gid(chat_id)}"
+
 def get_cached_admins(chat_id):
     gid = normalize_gid(chat_id)
+    now = datetime.utcnow()
+
     with _lock:
-        return _admins_cache.get(gid)
+        entry = _admins_cache.get(gid)
+        if entry:
+            admin_ids, expires_at = entry
+            if now < expires_at:
+                return admin_ids
+            else:
+                _admins_cache.pop(gid, None)
+
+    try:
+        r = get_redis()
+        data = r.get(_redis_key(gid))
+        if data:
+            admin_ids = json.loads(data)
+            with _lock:
+                _admins_cache[gid] = (admin_ids, now + timedelta(seconds=_CACHE_TTL))
+            return admin_ids
+    except Exception as e:
+        print(f"[WARN] Redis get_cached_admins failed: {e}")
+
+    return None
+
 
 def set_cached_admins(chat_id, admin_ids):
     gid = normalize_gid(chat_id)
+    expires_at = datetime.utcnow() + timedelta(seconds=_CACHE_TTL)
+
     with _lock:
-        _admins_cache[gid] = admin_ids
+        _admins_cache[gid] = (admin_ids, expires_at)
+
+    try:
+        r = get_redis()
+        r.setex(_redis_key(gid), _CACHE_TTL, json.dumps(admin_ids))
+    except Exception as e:
+        print(f"[WARN] Redis set_cached_admins failed: {e}")
+
 
 def clear_cached_admins(chat_id):
+
     gid = normalize_gid(chat_id)
+
     with _lock:
         _admins_cache.pop(gid, None)
+
+    try:
+        r = get_redis()
+        r.delete(_redis_key(gid))
+    except Exception as e:
+        print(f"[WARN] Redis clear_cached_admins failed: {e}")
+
 
 def is_user_admin_cached(chat_id, user_id):
     gid = normalize_gid(chat_id)
     with _lock:
         admins = _admins_cache.get(gid)
         if admins is None:
-            return None  # Not cached yet
+            return None 
         return user_id in admins
 
 def is_user_admin(bot, chat_id, user_id):
@@ -45,7 +91,6 @@ def is_user_admin(bot, chat_id, user_id):
         set_cached_admins(chat_id, admin_ids)
         return user_id in admin_ids
     except Exception as e:
-        # ✅ Notify dev
         context = "is_user_admin"
         notify_dev(bot, e, context, message=None)
         return False
@@ -200,5 +245,4 @@ class BotManager:
         db.set_bot_webhook(bot_id, None)
 
 
-# Instantiate manager
 manager = BotManager()

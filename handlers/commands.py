@@ -22,7 +22,7 @@ from utils.message_tracker import track_message, delete_tracked_messages
 from utils.message_tracker import delete_tracked_messages_with_progress
 from datetime import timedelta
 from telebot.types import ChatPermissions
-from utils.db import is_command_enabled, get_custom_command
+from utils.db import is_command_enabled, get_custom_command,get_bot_verification_text
 from bson import ObjectId
 import threading
 
@@ -198,7 +198,8 @@ def handle_group_command(bot, bot_id: str, message, db):
                         can_add_web_page_previews=True
                     )
                     bot.set_chat_permissions(chat_id, permissions)
-                    msg = bot.send_message(chat_id, "✅ Ad tracking has started! I will track 'ad', 'all done', 'all dn', 'done' messages.")
+                    msg_text = get_bot_verification_text(bot_id) or "✅ Ad tracking has started! I will track 'ad', 'all done', 'all dn', 'done' messages."
+                    msg = bot.send_message(chat_id, msg_text)
                     track_message(chat_id, msg.message_id, bot_id=bot_id)
                 except Exception as e:
                     notify_dev(bot, e, "/verify", message)

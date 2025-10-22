@@ -95,6 +95,13 @@ def handle_admin_update(update: Update):
                     db.set_bot_custom_command(bid, command, reply_text)
                     manager.admin_bot.send_message(chat_id, f"✅ Custom command {command} saved.")
                     return
+                elif action.startswith("addverifytext:"):
+                    _, bid, page = action.split(":")
+                    verify_text = text
+                    db.set_bot_verification_text(bid, verify_text)
+                    manager.admin_bot.send_message(chat_id, "✅ Verification text saved.")
+                    return
+
     except Exception as e:
         notify_dev(manager.admin_bot, e, "handle_admin_callback: custom command", message)
     
@@ -185,6 +192,13 @@ def handle_admin_callback(call: CallbackQuery):
         elif cmd.startswith("newrules:"):
             _, bid, page = cmd.split(":")
             set_bot_rules(call, bid, int(page))
+        elif cmd.startswith("verifytext:"):
+            _, bid, page = cmd.split(":")
+            show_bot_verification_text(call, bid, int(page))
+        elif cmd.startswith("newverifytext:"):
+            _, bid, page = cmd.split(":")
+            set_bot_verification_text(call, bid, int(page))
+
         elif cmd.startswith("customcmds:"):
             _, bid, page = cmd.split(":")
             show_custom_commands(call, bid, int(page))
@@ -257,6 +271,7 @@ def show_bot_list(chat_id, message_id, page=0):
         row.append(InlineKeyboardButton("📋 Rules",
                    callback_data=f"rules:{bid}:{page}"))
         row.append(InlineKeyboardButton("📝 Custom Cmds", callback_data=f"customcmds:{bid}:{page}"))
+        row.append(InlineKeyboardButton("🛡 Verify Text", callback_data=f"verifytext:{bid}:{page}"))
         kb.row(*row)
 
     nav_row = []
@@ -458,3 +473,29 @@ def ask_new_custom_command(call, bid: str, page: int):
     wizard_state.set_pending_action(call.from_user.id, f"addcustom:{bid}:{page}")
     manager.admin_bot.send_message(chat_id, "✏️ Send the *command name* (e.g., `u`).", parse_mode="Markdown")
     manager.admin_bot.answer_callback_query(call.id, "Waiting for command...")
+
+def show_bot_verification_text(call: CallbackQuery, bid: str, page: int):
+    """
+    Display current custom verification text for a bot, if any.
+    """
+    text_data = db.get_bot_verification_text(bid)
+    if not text_data:
+        display_text = "🛡 No custom verification text set."
+    else:
+        display_text = f"🛡 *Current Verification Text:*\n\n{text_data}"
+
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("📝 Set New Text", callback_data=f"newverifytext:{bid}:{page}"))
+    kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
+
+    safe_edit(call.message.chat.id, call.message.message_id, display_text, kb)
+
+
+def set_bot_verification_text(call: CallbackQuery, bid: str, page: int):
+    """
+    Start wizard to capture new verification text from admin.
+    """
+    chat_id = call.message.chat.id
+    wizard_state.set_pending_action(call.from_user.id, f"addverifytext:{bid}:{page}")
+    manager.admin_bot.send_message(chat_id, "📝 Send the *custom verification text* now.", parse_mode="Markdown")
+    manager.admin_bot.answer_callback_query(call.id, "Waiting for verification text...")
