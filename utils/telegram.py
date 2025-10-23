@@ -75,11 +75,12 @@ def clear_cached_admins(chat_id):
 def is_user_admin_cached(chat_id, user_id):
     gid = normalize_gid(chat_id)
     with _lock:
-        admins = _admins_cache.get(gid)
-        if admins is None:
-            return None 
-        return user_id in admins
-
+        entry = _admins_cache.get(gid)
+        if entry is None:
+            return None
+        admin_ids, expires_at = entry
+        return user_id in admin_ids
+    
 def is_user_admin(bot, chat_id, user_id):
     cached_result = is_user_admin_cached(chat_id, user_id)
     if cached_result is not None:
