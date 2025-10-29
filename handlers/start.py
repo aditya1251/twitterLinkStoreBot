@@ -125,8 +125,13 @@ def handle_cancel_group(bot, bot_id: str, message: Message, db):
 
             # ✅ Close video
             try:
-                msg = bot.send_video(chat_id, open("gifs/close.mp4", "rb"))
+                media = db.get_bot_media(bot_id, "close")
+                if media:
+                    msg = send_media(bot, chat_id, media)
+                else:
+                    msg = bot.send_video(chat_id, open("gifs/close.mp4", "rb"))
                 track_message(chat_id, msg.message_id, bot_id=bot_id)
+
             except Exception as e:
                 notify_dev(bot, e, "cancel_group: send close.mp4", message)
 
