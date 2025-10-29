@@ -7,6 +7,7 @@ r = get_redis()
 PENDING_ADD_TOKEN = "wizard:pending_add_token"   # hash {admin_id: chat_id}
 PENDING_RULES     = "wizard:pending_rules"       # hash {admin_id: bot_id}
 PENDING_ACTION    = "wizard:pending_action"      # hash {user_id: action}
+PENDING_MEDIA = "wizard:pending_media"  # hash {admin_id: "key:bot_id:page"}
 
 # === Add Token ===
 def set_pending_add_token(admin_id: int, chat_id: int):
@@ -36,4 +37,14 @@ def pop_pending_action(user_id: int):
     action = r.hget(PENDING_ACTION, user_id)
     if action:
         r.hdel(PENDING_ACTION, user_id)
+    return action
+
+# === Media ===
+def set_pending_media(admin_id: int, action: str):
+    r.hset(PENDING_MEDIA, admin_id, action)
+
+def pop_pending_media(admin_id: int):
+    action = r.hget(PENDING_MEDIA, admin_id)
+    if action:
+        r.hdel(PENDING_MEDIA, admin_id)
     return action

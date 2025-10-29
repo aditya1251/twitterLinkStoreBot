@@ -3,6 +3,8 @@ from utils.telegram import is_user_admin
 from utils.group_session import start_group_session, stop_group_session, get_group_phase
 from utils.message_tracker import track_message
 from handlers.admin import notify_dev
+from utils import db
+from utils.helper import send_media
 
 def handle_start_group(bot, bot_id: str, message: Message):
     chat_id = message.chat.id
@@ -41,11 +43,7 @@ def handle_start_group(bot, bot_id: str, message: Message):
             # ✅ Set group permissions
             try:
                 permissions = ChatPermissions(
-                    can_send_messages=True,
-                    can_send_media_messages=True,
-                    can_send_polls=True,
-                    can_send_other_messages=True,
-                    can_add_web_page_previews=True,
+                    can_send_messages=True
                 )
                 bot.set_chat_permissions(chat_id, permissions)
             except Exception as e:
@@ -53,8 +51,13 @@ def handle_start_group(bot, bot_id: str, message: Message):
 
             # ✅ Start video
             try:
-                msg = bot.send_video(chat_id, open("gifs/start.mp4", "rb"))
+                media = db.get_bot_media(bot_id, "start")
+                if media:
+                    msg = send_media(bot, chat_id, media)
+                else:
+                    msg = bot.send_video(chat_id, open("gifs/start.mp4", "rb"))
                 track_message(chat_id, msg.message_id, bot_id=bot_id)
+
             except Exception as e:
                 notify_dev(bot, e, "start_group: send start.mp4", message)
 

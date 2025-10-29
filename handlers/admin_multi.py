@@ -95,6 +95,38 @@ def handle_admin_update(update: Update):
                 db.set_bot_verification_text(bid, text)
                 manager.admin_bot.send_message(chat_id, "✅ Verification text saved.")
                 return
+            
+                # === Handle media uploads (for custom start/close/end) ===
+            if message.video or message.animation or message.photo:
+                media_action = wizard_state.pop_pending_media(message.from_user.id)
+                if media_action:
+                    try:
+                        key, bid, page = media_action.split(":")
+                        media_type = (
+                            "video" if message.video else
+                            "gif" if message.animation else
+                            "image"
+                        )
+                        file_id = (
+                            message.video.file_id if message.video else
+                            message.animation.file_id if message.animation else
+                            message.photo[-1].file_id
+                        )
+                        caption = message.caption or ""
+
+                        db.set_bot_media(bid, key, media_type, file_id, caption)
+                        manager.admin_bot.send_message(
+                            chat_id,
+                            f"✅ {key.capitalize()} media saved successfully!",
+                            parse_mode="Markdown"
+                        )
+                        show_bot_manage_panel(call=None, bid=bid, page=int(page))
+                        return
+                    except Exception as e:
+                        notify_dev(manager.admin_bot, e, "handle_admin_update: media upload", message)
+                        manager.admin_bot.send_message(chat_id, "❌ Failed to save media.")
+                        return
+
     except Exception as e:
         notify_dev(manager.admin_bot, e, "handle_admin_callback: custom command", message)
 
@@ -161,6 +193,20 @@ def handle_admin_callback(call: CallbackQuery):
             _, bid, page = cmd.split(":")
             remove_bot(call, bid, int(page))
             return
+        
+        if cmd.startswith("setmedia:"):
+            _, key, bid, page = cmd.split(":")
+            wizard_state.set_pending_media(call.from_user.id, f"{key}:{bid}:{page}")
+            safe_edit(
+                call.message.chat.id,
+                call.message.message_id,
+                f"🎞 Send a *GIF / image / video* for `{key}` phase.\n"
+                "You can include a caption too.",
+                back_btn()
+            )
+            manager.admin_bot.answer_callback_query(call.id, "Waiting for media upload...")
+            return
+
 
         # Commands / Rules / Custom / Verify Text
         if cmd.startswith("commands:"):
@@ -180,6 +226,12 @@ def handle_admin_callback(call: CallbackQuery):
             _, bid, page = cmd.split(":")
             show_bot_rules(call, bid, int(page))
             return
+        
+        if cmd.startswith("media:"):
+            _, bid, page = cmd.split(":")
+            show_bot_media_settings(call, bid, int(page))
+            return
+
 
         if cmd.startswith("newrules:"):
             _, bid, page = cmd.split(":")
@@ -296,6 +348,10 @@ def show_bot_manage_panel(call: CallbackQuery, bid: str, page: int):
         InlineKeyboardButton("📝 Custom Cmds", callback_data=f"customcmds:{bid}:{page}"),
         InlineKeyboardButton("🛡 Verify Text", callback_data=f"verifytext:{bid}:{page}")
     )
+    kb.add(
+    InlineKeyboardButton("🎞 Media", callback_data=f"media:{bid}:{page}")
+)
+
     kb.row(
         InlineKeyboardButton(
             "⏸ Disable" if status == "enabled" else "▶️ Enable",
@@ -518,3 +574,32 @@ def set_bot_verification_text(call: CallbackQuery, bid: str, page: int):
     wizard_state.set_pending_action(call.from_user.id, f"addverifytext:{bid}:{page}")
     manager.admin_bot.send_message(chat_id, "📝 Send the *custom verification text* now.", parse_mode="Markdown")
     manager.admin_bot.answer_callback_query(call.id, "Waiting for verification text...")
+
+def show_bot_media_settings(call: CallbackQuery, bid: str, page: int):
+    bot = db.get_bot_by_id(bid)
+    media = bot.get("custom_media", {})
+
+    def display(key):
+        entry = media.get(key)
+        if not entry:
+            return f"❌ No {key} media set"
+        return f"✅ {entry['type']} ({entry.get('caption', '')})"
+
+    text = (
+        f"🎞 *Media Settings for Bot {bid}*\n\n"
+        f"▶️ Start: {display('start')}\n"
+        f"⏸ Close: {display('close')}\n"
+        f"🏁 End: {display('end')}\n\n"
+        "You can upload a new GIF/image/video to replace each one."
+    )
+
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("Set Start", callback_data=f"setmedia:start:{bid}:{page}"),
+        InlineKeyboardButton("Set Close", callback_data=f"setmedia:close:{bid}:{page}")
+    )
+    kb.add(
+        InlineKeyboardButton("Set End", callback_data=f"setmedia:end:{bid}:{page}")
+    )
+    kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
+    safe_edit(call.message.chat.id, call.message.message_id, text, kb)
