@@ -56,6 +56,9 @@ def handle_admin_update(update: Update):
     if update.callback_query:
         return handle_admin_callback(update.callback_query)
     
+    if not update.message:
+        return
+    
     message: Message = update.message
 
     if message.video or message.animation or message.photo:
@@ -85,11 +88,8 @@ def handle_admin_update(update: Update):
                 return
             except Exception as e:
                 notify_dev(manager.admin_bot, e, "handle_admin_update: media upload", message)
-                manager.admin_bot.send_message(chat_id, "❌ Failed to save media.")
+                manager.admin_bot.send_message(message.from_user.id, "❌ Failed to save media.")
                 return
-
-    if not update.message:
-        return
 
     
     text = message.text.strip() if message.text else ""
