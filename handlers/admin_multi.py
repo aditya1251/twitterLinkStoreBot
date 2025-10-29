@@ -77,7 +77,7 @@ def handle_admin_update(update: Update):
 
                 db.set_bot_media(bid, key, media_type, file_id, caption)
                 manager.admin_bot.send_message(
-                    chat_id,
+                    message.from_user.id,
                     f"✅ {key.capitalize()} media saved successfully!",
                     parse_mode="Markdown"
                 )
