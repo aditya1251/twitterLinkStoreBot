@@ -55,6 +55,8 @@ def show_main_menu(chat_id, message_id=None):
 def handle_admin_update(update: Update):
     if update.callback_query:
         return handle_admin_callback(update.callback_query)
+    
+    message: Message = update.message
 
     if message.video or message.animation or message.photo:
         media_action = wizard_state.pop_pending_media(message.from_user.id)
@@ -89,7 +91,7 @@ def handle_admin_update(update: Update):
     if not update.message:
         return
 
-    message: Message = update.message
+    
     text = message.text.strip() if message.text else ""
 
     if message.from_user.id != settings.ADMIN_TELEGRAM_USER_ID:
