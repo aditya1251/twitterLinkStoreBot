@@ -56,6 +56,36 @@ def handle_admin_update(update: Update):
     if update.callback_query:
         return handle_admin_callback(update.callback_query)
 
+    if message.video or message.animation or message.photo:
+        media_action = wizard_state.pop_pending_media(message.from_user.id)
+        if media_action:
+            try:
+                key, bid, page = media_action.split(":")
+                media_type = (
+                    "video" if message.video else
+                    "gif" if message.animation else
+                    "image"
+                )
+                file_id = (
+                    message.video.file_id if message.video else
+                    message.animation.file_id if message.animation else
+                    message.photo[-1].file_id
+                )
+                caption = message.caption or ""
+
+                db.set_bot_media(bid, key, media_type, file_id, caption)
+                manager.admin_bot.send_message(
+                    chat_id,
+                    f"✅ {key.capitalize()} media saved successfully!",
+                    parse_mode="Markdown"
+                )
+                show_bot_manage_panel(call=None, bid=bid, page=int(page))
+                return
+            except Exception as e:
+                notify_dev(manager.admin_bot, e, "handle_admin_update: media upload", message)
+                manager.admin_bot.send_message(chat_id, "❌ Failed to save media.")
+                return
+
     if not update.message:
         return
 
@@ -97,36 +127,7 @@ def handle_admin_update(update: Update):
                 return
             
                 # === Handle media uploads (for custom start/close/end) ===
-            if message.video or message.animation or message.photo:
-                media_action = wizard_state.pop_pending_media(message.from_user.id)
-                if media_action:
-                    try:
-                        key, bid, page = media_action.split(":")
-                        media_type = (
-                            "video" if message.video else
-                            "gif" if message.animation else
-                            "image"
-                        )
-                        file_id = (
-                            message.video.file_id if message.video else
-                            message.animation.file_id if message.animation else
-                            message.photo[-1].file_id
-                        )
-                        caption = message.caption or ""
-
-                        db.set_bot_media(bid, key, media_type, file_id, caption)
-                        manager.admin_bot.send_message(
-                            chat_id,
-                            f"✅ {key.capitalize()} media saved successfully!",
-                            parse_mode="Markdown"
-                        )
-                        show_bot_manage_panel(call=None, bid=bid, page=int(page))
-                        return
-                    except Exception as e:
-                        notify_dev(manager.admin_bot, e, "handle_admin_update: media upload", message)
-                        manager.admin_bot.send_message(chat_id, "❌ Failed to save media.")
-                        return
-
+         
     except Exception as e:
         notify_dev(manager.admin_bot, e, "handle_admin_callback: custom command", message)
 
