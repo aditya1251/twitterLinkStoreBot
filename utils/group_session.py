@@ -10,6 +10,9 @@ from telebot.apihelper import ApiTelegramException
 import time
 ADMIN_IDS = settings.ADMIN_IDS
 
+from utils import db as ddb
+from utils.helper import send_media
+
 # === Redis Connection ===
 r = get_redis()
 
@@ -320,6 +323,8 @@ def handle_close_group(bot, bot_id: str, message):
         msg = bot.reply_to(message, "❌ Only admins can use this command.")
         track_message(message.chat.id, msg.message_id, bot_id=bot_id)
         return
+    
+    chat_id = message.chat.id
     gid = normalize_gid(message.chat.id)
     active_groups = _get(bot_id, "active_groups", {})
     active_groups[gid] = "closed"
@@ -359,7 +364,12 @@ def handle_close_group(bot, bot_id: str, message):
 
     # ✅ Stop video
     try:
-        msg = bot.send_video(message.chat.id, open("gifs/stop.mp4", "rb"))
+        media = ddb.get_bot_media(bot_id, "close")
+        if media:
+            msg = send_media(bot, chat_id, media)
+        else:
+            msg = bot.send_video(chat_id, open("gifs/stop.mp4", "rb"))
+        track_message(chat_id, msg.message_id, bot_id=bot_id)
         msg2 = bot.send_message(
             message.chat.id, "Time line is getting updated wait few mins.")
         track_message(message.chat.id, msg.message_id, bot_id=bot_id)
@@ -458,7 +468,7 @@ def get_unverified_users(bot_id: str, group_id):
             seen.add(user_id)
             unverified_users.append(
                 f'{number}. 🅇 ᴵᴰ {msg["x_username"]}| ᵀᴳ '
-                f'{ f'@{msg["username"]}' if msg.get("username") else f"<a href=\"tg://user?id={user_id}\">{msg.get("first_name", "User")}</a>" }'
+                # f'{ f'@{msg["username"]}' if msg.get("username") else f"<a href=\"tg://user?id={user_id}\">{msg.get("first_name", "User")}</a>" }'
             )
 
     return unverified_users

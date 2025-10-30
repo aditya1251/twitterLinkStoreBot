@@ -3,7 +3,7 @@ from utils.telegram import is_user_admin
 from utils.group_session import start_group_session, stop_group_session, get_group_phase
 from utils.message_tracker import track_message
 from handlers.admin import notify_dev
-from utils import db
+from utils import db as ddb
 from utils.helper import send_media
 
 def handle_start_group(bot, bot_id: str, message: Message):
@@ -51,8 +51,9 @@ def handle_start_group(bot, bot_id: str, message: Message):
 
             # ✅ Start video
             try:
-                media = db.get_bot_media(bot_id, "start")
+                media = ddb.get_bot_media(bot_id, "start")
                 if media:
+                    print(media)
                     msg = send_media(bot, chat_id, media)
                 else:
                     msg = bot.send_video(chat_id, open("gifs/start.mp4", "rb"))
@@ -125,7 +126,7 @@ def handle_cancel_group(bot, bot_id: str, message: Message, db):
 
             # ✅ Close video
             try:
-                media = db.get_bot_media(bot_id, "close")
+                media = ddb.get_bot_media(bot_id, "end")
                 if media:
                     msg = send_media(bot, chat_id, media)
                 else:

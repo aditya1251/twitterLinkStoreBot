@@ -1,3 +1,4 @@
+from utils import wizard_state, db
 from telebot.types import (
     Update, Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 )
@@ -48,24 +49,32 @@ def show_main_menu(chat_id, message_id=None):
     if message_id:
         safe_edit(chat_id, message_id, text, kb)
     else:
-        manager.admin_bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+        manager.admin_bot.send_message(
+            chat_id, text, parse_mode="Markdown", reply_markup=kb)
 
 
 # === HANDLE ADMIN UPDATE ===
 def handle_admin_update(update: Update):
     if update.callback_query:
         return handle_admin_callback(update.callback_query)
-    
+
     if not update.message:
         return
-    
-    message: Message = update.message
 
+    message: Message = update.message
     if message.video or message.animation or message.photo:
         media_action = wizard_state.pop_pending_media(message.from_user.id)
         if media_action:
             try:
                 key, bid, page = media_action.split(":")
+
+                bot = manager.create_or_get_child(bid)
+                if not bot:
+                    manager.admin_bot.send_message(
+                        message.from_user.id, "❌ Bot not found."
+                    )
+                    return
+
                 media_type = (
                     "video" if message.video else
                     "gif" if message.animation else
@@ -78,20 +87,58 @@ def handle_admin_update(update: Update):
                 )
                 caption = message.caption or ""
 
-                db.set_bot_media(bid, key, media_type, file_id, caption)
+                # --- 🔥 Step 1: Download file from admin bot ---
+                file_info = manager.admin_bot.get_file(file_id)
+                file_bytes = manager.admin_bot.download_file(
+                    file_info.file_path)
+
+                # --- 🔥 Step 2: Upload to target bot ---
+                if media_type == "video":
+                    sent = bot.send_video(
+                        message.from_user.id,  # you can send it to admin user to upload
+                        file_bytes,
+                        caption=caption,
+                    )
+                    new_file_id = sent.video.file_id
+                elif media_type == "gif":
+                    sent = bot.send_animation(
+                        message.from_user.id,
+                        file_bytes,
+                        caption=caption,
+                    )
+                    new_file_id = sent.animation.file_id
+                else:
+                    sent = bot.send_photo(
+                        message.from_user.id,
+                        file_bytes,
+                        caption=caption,
+                    )
+                    new_file_id = sent.photo[-1].file_id
+
+                # --- 🔥 Step 3: Save new file_id in DB ---
+                db.set_bot_media(bid, key, media_type, new_file_id, caption)
+
+                # --- Notify admin ---
                 manager.admin_bot.send_message(
                     message.from_user.id,
                     f"✅ {key.capitalize()} media saved successfully!",
                     parse_mode="Markdown"
                 )
+
                 show_bot_manage_panel(call=None, bid=bid, page=int(page))
                 return
-            except Exception as e:
-                notify_dev(manager.admin_bot, e, "handle_admin_update: media upload", message)
-                manager.admin_bot.send_message(message.from_user.id, "❌ Failed to save media.")
-                return
 
+            except Exception as e:
+                notify_dev(manager.admin_bot, e,
+                           "handle_admin_update: media upload", message)
+                manager.admin_bot.send_message(
+                    message.from_user.id, "❌ Failed to save media."
+                )
+                return
     
+    if not message.text:
+        return
+
     text = message.text.strip() if message.text else ""
 
     if message.from_user.id != settings.ADMIN_TELEGRAM_USER_ID:
@@ -112,26 +159,31 @@ def handle_admin_update(update: Update):
         if action:
             if action.startswith("addcustom:"):
                 _, bid, page = action.split(":")
-                wizard_state.set_pending_action(user_id, f"addcustomreply:{bid}:/{text}:{page}")
-                manager.admin_bot.send_message(chat_id, f"📩 Now send the *reply text* for command /{text}", parse_mode="Markdown")
+                wizard_state.set_pending_action(
+                    user_id, f"addcustomreply:{bid}:/{text}:{page}")
+                manager.admin_bot.send_message(
+                    chat_id, f"📩 Now send the *reply text* for command /{text}", parse_mode="Markdown")
                 return
 
             elif action.startswith("addcustomreply:"):
                 _, bid, command, page = action.split(":")
                 db.set_bot_custom_command(bid, command, text)
-                manager.admin_bot.send_message(chat_id, f"✅ Custom command {command} saved.")
+                manager.admin_bot.send_message(
+                    chat_id, f"✅ Custom command {command} saved.")
                 return
 
             elif action.startswith("addverifytext:"):
                 _, bid, page = action.split(":")
                 db.set_bot_verification_text(bid, text)
-                manager.admin_bot.send_message(chat_id, "✅ Verification text saved.")
+                manager.admin_bot.send_message(
+                    chat_id, "✅ Verification text saved.")
                 return
-            
+
                 # === Handle media uploads (for custom start/close/end) ===
-         
+
     except Exception as e:
-        notify_dev(manager.admin_bot, e, "handle_admin_callback: custom command", message)
+        notify_dev(manager.admin_bot, e,
+                   "handle_admin_callback: custom command", message)
 
     bid = wizard_state.pop_pending_rules(message.from_user.id)
     if bid:
@@ -146,7 +198,8 @@ def handle_admin_update(update: Update):
 def handle_admin_callback(call: CallbackQuery):
     try:
         if call.from_user.id != settings.ADMIN_TELEGRAM_USER_ID:
-            manager.admin_bot.answer_callback_query(call.id, "❌ Not authorized.")
+            manager.admin_bot.answer_callback_query(
+                call.id, "❌ Not authorized.")
             return
 
         cmd = call.data
@@ -161,13 +214,16 @@ def handle_admin_callback(call: CallbackQuery):
                 "• ⏸️ Disable Bot — Stop bot\n"
                 "• 🗑️ Remove Bot — Delete permanently"
             )
-            safe_edit(call.message.chat.id, call.message.message_id, help_text, back_btn())
+            safe_edit(call.message.chat.id, call.message.message_id,
+                      help_text, back_btn())
             return
 
         # Add bot
         if cmd == "cmd_addbot":
-            wizard_state.set_pending_add_token(call.from_user.id, call.message.chat.id)
-            safe_edit(call.message.chat.id, call.message.message_id, "➕ Please send me the *bot token* now:", back_btn())
+            wizard_state.set_pending_add_token(
+                call.from_user.id, call.message.chat.id)
+            safe_edit(call.message.chat.id, call.message.message_id,
+                      "➕ Please send me the *bot token* now:", back_btn())
             return
 
         # List bots & pagination
@@ -196,10 +252,11 @@ def handle_admin_callback(call: CallbackQuery):
             _, bid, page = cmd.split(":")
             remove_bot(call, bid, int(page))
             return
-        
+
         if cmd.startswith("setmedia:"):
             _, key, bid, page = cmd.split(":")
-            wizard_state.set_pending_media(call.from_user.id, f"{key}:{bid}:{page}")
+            wizard_state.set_pending_media(
+                call.from_user.id, f"{key}:{bid}:{page}")
             safe_edit(
                 call.message.chat.id,
                 call.message.message_id,
@@ -207,9 +264,9 @@ def handle_admin_callback(call: CallbackQuery):
                 "You can include a caption too.",
                 back_btn()
             )
-            manager.admin_bot.answer_callback_query(call.id, "Waiting for media upload...")
+            manager.admin_bot.answer_callback_query(
+                call.id, "Waiting for media upload...")
             return
-
 
         # Commands / Rules / Custom / Verify Text
         if cmd.startswith("commands:"):
@@ -220,7 +277,8 @@ def handle_admin_callback(call: CallbackQuery):
         if cmd.startswith("togglecmd:"):
             _, bid, command, page = cmd.split(":")
             enabled = set(db.get_bot_commands(bid))
-            enabled.remove(command) if command in enabled else enabled.add(command)
+            enabled.remove(
+                command) if command in enabled else enabled.add(command)
             db.set_bot_commands(bid, list(enabled))
             show_bot_commands(call, bid, int(page))
             return
@@ -229,12 +287,11 @@ def handle_admin_callback(call: CallbackQuery):
             _, bid, page = cmd.split(":")
             show_bot_rules(call, bid, int(page))
             return
-        
+
         if cmd.startswith("media:"):
             _, bid, page = cmd.split(":")
             show_bot_media_settings(call, bid, int(page))
             return
-
 
         if cmd.startswith("newrules:"):
             _, bid, page = cmd.split(":")
@@ -250,7 +307,7 @@ def handle_admin_callback(call: CallbackQuery):
             _, bid, page = cmd.split(":")
             set_bot_verification_text(call, bid, int(page))
             return
-        
+
         if cmd.startswith("customcmds:"):
             _, bid, page = cmd.split(":")
             show_custom_commands(call, bid, int(page))
@@ -312,14 +369,17 @@ def show_bot_list(chat_id, message_id, page=0):
         status = bot.get("status", "unknown")
         icon = "🟢" if status == "enabled" else "🔴"
         text += f"{icon} [@{escape_md(name)}](https://t.me/{name}) — *{status}*\n"
-        kb.add(InlineKeyboardButton(f"🧩 Manage {name}", callback_data=f"manage:{bid}:{page}"))
+        kb.add(InlineKeyboardButton(
+            f"🧩 Manage {name}", callback_data=f"manage:{bid}:{page}"))
 
     # Pagination
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"page:{page-1}"))
+        nav.append(InlineKeyboardButton(
+            "⬅️ Prev", callback_data=f"page:{page-1}"))
     if end < total:
-        nav.append(InlineKeyboardButton("➡️ Next", callback_data=f"page:{page+1}"))
+        nav.append(InlineKeyboardButton(
+            "➡️ Next", callback_data=f"page:{page+1}"))
     if nav:
         kb.row(*nav)
 
@@ -344,16 +404,19 @@ def show_bot_manage_panel(call: CallbackQuery, bid: str, page: int):
 
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton("⚙️ Commands", callback_data=f"commands:{bid}:{page}"),
+        InlineKeyboardButton(
+            "⚙️ Commands", callback_data=f"commands:{bid}:{page}"),
         InlineKeyboardButton("📜 Rules", callback_data=f"rules:{bid}:{page}")
     )
     kb.add(
-        InlineKeyboardButton("📝 Custom Cmds", callback_data=f"customcmds:{bid}:{page}"),
-        InlineKeyboardButton("🛡 Verify Text", callback_data=f"verifytext:{bid}:{page}")
+        InlineKeyboardButton(
+            "📝 Custom Cmds", callback_data=f"customcmds:{bid}:{page}"),
+        InlineKeyboardButton(
+            "🛡 Verify Text", callback_data=f"verifytext:{bid}:{page}")
     )
     kb.add(
-    InlineKeyboardButton("🎞 Media", callback_data=f"media:{bid}:{page}")
-)
+        InlineKeyboardButton("🎞 Media", callback_data=f"media:{bid}:{page}")
+    )
 
     kb.row(
         InlineKeyboardButton(
@@ -362,7 +425,8 @@ def show_bot_manage_panel(call: CallbackQuery, bid: str, page: int):
         ),
         InlineKeyboardButton("🗑 Remove", callback_data=f"remove:{bid}:{page}")
     )
-    kb.add(InlineKeyboardButton("⬅️ Back to List", callback_data=f"listpage:{page}"))
+    kb.add(InlineKeyboardButton("⬅️ Back to List",
+           callback_data=f"listpage:{page}"))
 
     safe_edit(call.message.chat.id, call.message.message_id, text, kb)
 
@@ -428,6 +492,8 @@ def process_new_bot_token(message: Message, token: str):
     show_main_menu(message.chat.id)
 
 # === ENABLE BOT ===
+
+
 def enable_bot(call: CallbackQuery, bid: str, page: int):
     try:
         db.set_bot_status(bid, "enabled")
@@ -496,6 +562,7 @@ def show_bot_commands(call: CallbackQuery, bid: str, page: int):
     text = f"⚙️ *Command Settings for Bot {bid}*"
     safe_edit(call.message.chat.id, call.message.message_id, text, kb)
 
+
 def show_bot_rules(call: CallbackQuery, bid: str, page: int):
     rules = db.get_bot_doc(bid).get("rules")
     if not rules:
@@ -504,29 +571,31 @@ def show_bot_rules(call: CallbackQuery, bid: str, page: int):
     text = f"📛 *Rules for Bot {bid}*\n\n{rules}"
     manager.admin_bot.send_message(call.message.chat.id, text)
     kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("✅ New Rules", callback_data=f"newrules:{bid}:{page}"))
+    kb.add(InlineKeyboardButton("✅ New Rules",
+           callback_data=f"newrules:{bid}:{page}"))
     kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
 
     edit_text = "✅ Edit Rules"
     safe_edit(call.message.chat.id, call.message.message_id, edit_text, kb)
+
 
 def set_bot_rules(call: CallbackQuery, bid: str, page: int):
 
     chat_id = call.message.chat.id
     # Ask for rules
     wizard_state.set_pending_rules(call.from_user.id, bid)
-    manager.admin_bot.send_message(chat_id, "📛 Send the rules to *set*.", parse_mode="Markdown")
+    manager.admin_bot.send_message(
+        chat_id, "📛 Send the rules to *set*.", parse_mode="Markdown")
     manager.admin_bot.answer_callback_query(call.id, "Waiting for rules...")
-    
+
 
 def process_new_rule(message: Message, bid: str):
     chat_id = message.chat.id
     rules = message.text.strip()
     db.set_bot_rules(bid, rules)
-    manager.admin_bot.send_message(chat_id, "✅ Rules set.", parse_mode="Markdown")
+    manager.admin_bot.send_message(
+        chat_id, "✅ Rules set.", parse_mode="Markdown")
 
-
-from utils import wizard_state, db
 
 def show_custom_commands(call, bid: str, page: int):
     cmds = db.list_custom_commands(bid)
@@ -538,9 +607,11 @@ def show_custom_commands(call, bid: str, page: int):
             text += f"{c} → {reply[:30]}...\n"
 
     kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("➕ Add Command", callback_data=f"newcustom:{bid}:{page}"))
+    kb.add(InlineKeyboardButton("➕ Add Command",
+           callback_data=f"newcustom:{bid}:{page}"))
     for c in cmds.keys():
-        kb.add(InlineKeyboardButton(f"🗑 Remove {c}", callback_data=f"delcustom:{bid}:{c}:{page}"))
+        kb.add(InlineKeyboardButton(
+            f"🗑 Remove {c}", callback_data=f"delcustom:{bid}:{c}:{page}"))
     kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
 
     safe_edit(call.message.chat.id, call.message.message_id, text, kb)
@@ -548,9 +619,12 @@ def show_custom_commands(call, bid: str, page: int):
 
 def ask_new_custom_command(call, bid: str, page: int):
     chat_id = call.message.chat.id
-    wizard_state.set_pending_action(call.from_user.id, f"addcustom:{bid}:{page}")
-    manager.admin_bot.send_message(chat_id, "✏️ Send the *command name* (e.g., `u`).", parse_mode="Markdown")
+    wizard_state.set_pending_action(
+        call.from_user.id, f"addcustom:{bid}:{page}")
+    manager.admin_bot.send_message(
+        chat_id, "✏️ Send the *command name* (e.g., `u`).", parse_mode="Markdown")
     manager.admin_bot.answer_callback_query(call.id, "Waiting for command...")
+
 
 def show_bot_verification_text(call: CallbackQuery, bid: str, page: int):
     """
@@ -563,7 +637,8 @@ def show_bot_verification_text(call: CallbackQuery, bid: str, page: int):
         display_text = f"🛡 *Current Verification Text:*\n\n{text_data}"
 
     kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("📝 Set New Text", callback_data=f"newverifytext:{bid}:{page}"))
+    kb.add(InlineKeyboardButton("📝 Set New Text",
+           callback_data=f"newverifytext:{bid}:{page}"))
     kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
 
     safe_edit(call.message.chat.id, call.message.message_id, display_text, kb)
@@ -574,9 +649,13 @@ def set_bot_verification_text(call: CallbackQuery, bid: str, page: int):
     Start wizard to capture new verification text from admin.
     """
     chat_id = call.message.chat.id
-    wizard_state.set_pending_action(call.from_user.id, f"addverifytext:{bid}:{page}")
-    manager.admin_bot.send_message(chat_id, "📝 Send the *custom verification text* now.", parse_mode="Markdown")
-    manager.admin_bot.answer_callback_query(call.id, "Waiting for verification text...")
+    wizard_state.set_pending_action(
+        call.from_user.id, f"addverifytext:{bid}:{page}")
+    manager.admin_bot.send_message(
+        chat_id, "📝 Send the *custom verification text* now.", parse_mode="Markdown")
+    manager.admin_bot.answer_callback_query(
+        call.id, "Waiting for verification text...")
+
 
 def show_bot_media_settings(call: CallbackQuery, bid: str, page: int):
     bot = db.get_bot_by_id(bid)
@@ -598,11 +677,14 @@ def show_bot_media_settings(call: CallbackQuery, bid: str, page: int):
 
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton("Set Start", callback_data=f"setmedia:start:{bid}:{page}"),
-        InlineKeyboardButton("Set Close", callback_data=f"setmedia:close:{bid}:{page}")
+        InlineKeyboardButton(
+            "Set Start", callback_data=f"setmedia:start:{bid}:{page}"),
+        InlineKeyboardButton(
+            "Set Close", callback_data=f"setmedia:close:{bid}:{page}")
     )
     kb.add(
-        InlineKeyboardButton("Set End", callback_data=f"setmedia:end:{bid}:{page}")
+        InlineKeyboardButton(
+            "Set End", callback_data=f"setmedia:end:{bid}:{page}")
     )
     kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
     safe_edit(call.message.chat.id, call.message.message_id, text, kb)
