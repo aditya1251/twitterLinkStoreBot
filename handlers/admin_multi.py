@@ -178,8 +178,13 @@ def handle_admin_update(update: Update):
                 manager.admin_bot.send_message(
                     chat_id, "✅ Verification text saved.")
                 return
-
-                # === Handle media uploads (for custom start/close/end) ===
+            
+            elif action.startswith("addadtext:"):
+                _, bid, page = action.split(":")
+                db.set_bot_ad_text(bid, text)
+                manager.admin_bot.send_message(
+                    chat_id, "✅ Advertisement text saved.")
+                return
 
     except Exception as e:
         notify_dev(manager.admin_bot, e,
@@ -266,6 +271,17 @@ def handle_admin_callback(call: CallbackQuery):
             )
             manager.admin_bot.answer_callback_query(
                 call.id, "Waiting for media upload...")
+            return
+        
+        # Ad Text section
+        if cmd.startswith("adtext:"):
+            _, bid, page = cmd.split(":")
+            show_bot_ad_text(call, bid, int(page))
+            return
+
+        if cmd.startswith("newadtext:"):
+            _, bid, page = cmd.split(":")
+            set_bot_ad_text(call, bid, int(page))
             return
 
         # Commands / Rules / Custom / Verify Text
@@ -415,8 +431,10 @@ def show_bot_manage_panel(call: CallbackQuery, bid: str, page: int):
             "🛡 Verify Text", callback_data=f"verifytext:{bid}:{page}")
     )
     kb.add(
-        InlineKeyboardButton("🎞 Media", callback_data=f"media:{bid}:{page}")
+        InlineKeyboardButton("🎞 Media", callback_data=f"media:{bid}:{page}"),
+        InlineKeyboardButton("📢 Ad Text", callback_data=f"adtext:{bid}:{page}")
     )
+
 
     kb.row(
         InlineKeyboardButton(
@@ -688,3 +706,44 @@ def show_bot_media_settings(call: CallbackQuery, bid: str, page: int):
     )
     kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
     safe_edit(call.message.chat.id, call.message.message_id, text, kb)
+
+def show_bot_ad_text(call: CallbackQuery, bid: str, page: int):
+    """
+    Display current ad text for a bot, if any.
+    """
+    text_data = db.get_bot_ad_text(bid)
+    if not text_data:
+        display_text = "📢 No ad text set yet."
+    else:
+        display_text = f"📢 *Current Ad Text:*\n\n{text_data}"
+
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("📝 Set New Ad Text",
+           callback_data=f"newadtext:{bid}:{page}"))
+    kb.add(InlineKeyboardButton("⬅️ Back", callback_data=f"listpage:{page}"))
+
+    safe_edit(call.message.chat.id, call.message.message_id, display_text, kb)
+
+
+def set_bot_ad_text(call: CallbackQuery, bid: str, page: int):
+    """
+    Start wizard to capture new ad text from admin.
+    """
+    chat_id = call.message.chat.id
+    wizard_state.set_pending_action(
+        call.from_user.id, f"addadtext:{bid}:{page}")
+    manager.admin_bot.send_message(
+        chat_id, "📝 Send the *advertisement text* now.", parse_mode="Markdown")
+    manager.admin_bot.answer_callback_query(
+        call.id, "Waiting for ad text...")
+
+
+def process_new_ad_text(message: Message, bid: str):
+    """
+    Save the ad text once the admin sends it.
+    """
+    chat_id = message.chat.id
+    text = message.text.strip()
+    db.set_bot_ad_text(bid, text)
+    manager.admin_bot.send_message(
+        chat_id, "✅ Advertisement text saved.", parse_mode="Markdown")

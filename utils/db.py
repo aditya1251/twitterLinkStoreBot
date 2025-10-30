@@ -231,3 +231,14 @@ def set_bot_media(bid: str, key: str, media_type: str, file_id: str, caption: st
 def get_bot_media(bid: str, key: str):
     bot = get_bot_by_id(bid)
     return bot.get("custom_media", {}).get(key)
+
+def get_bot_ad_text(bid):
+    bot = get_bot_by_id(bid)
+    return bot.get("ad_text") if bot else None
+
+
+def set_bot_ad_text(bid, text):
+    bots_collection().update_one(
+        {"_id": ObjectId(bid)},
+        {"$set": {"ad_text": text}}
+    )

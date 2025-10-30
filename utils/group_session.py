@@ -467,8 +467,8 @@ def get_unverified_users(bot_id: str, group_id):
         if not msg["check"] and user_id not in seen:
             seen.add(user_id)
             unverified_users.append(
-                f'{number}. 🅇 ᴵᴰ {msg["x_username"]}| ᵀᴳ '
-                # f'{ f'@{msg["username"]}' if msg.get("username") else f"<a href=\"tg://user?id={user_id}\">{msg.get("first_name", "User")}</a>" }'
+                f'{number}. 🆇 ɪᴅ {msg["x_username"]}| ᴛɢ '
+                f'{ f'@{msg["username"]}' if msg.get("username") else f"<a href=\"tg://user?id={user_id}\">{msg.get("first_name", "User")}</a>" }'
             )
 
     return unverified_users
