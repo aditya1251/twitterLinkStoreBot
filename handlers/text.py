@@ -11,7 +11,8 @@ from utils.group_session import (
 from utils.message_tracker import track_message
 from utils.telegram import is_user_admin
 from handlers.admin import notify_dev
-from utils import wizard_state, db
+from utils import wizard_state
+from utils import db as ddb
 
 
 def handle_text(bot, bot_id: str, message: Message, db):
@@ -94,7 +95,7 @@ def handle_group_text(bot, bot_id: str, message: Message, db):
                     x_username, status = mark_user_verified(bot_id, group_id, user.id)
                     if x_username:
                         # Try to get custom ad text from DB
-                        ad_text = db.get_bot_ad_text(bot_id)
+                        ad_text = ddb.get_bot_ad_text(bot_id)
 
                         if not ad_text:
                             ad_text = f"🆇 ID @{x_username}\n\nprofile 🔗: https://x.com/{x_username}"
